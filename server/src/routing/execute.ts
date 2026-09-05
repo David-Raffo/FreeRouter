@@ -16,6 +16,7 @@ import {
   getProviderKeySecret,
   listModels,
   markProviderKeyInvalid,
+  markStreamingUnsupported,
   setModelEnabled,
   shrinkContextLength,
   type StoredModel,
@@ -93,9 +94,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
   const { body, estimate, chain, signal } = options;
   const attempts: Attempt[] = [];
   const wantsStream = body.stream === true;
-  // Se pide troceado si el cliente lo quiere o si hay que medir el TTFT. En el segundo
-  // caso la respuesta se rearma antes de contestar, así que el cliente no nota nada.
-  const streamUpstream = wantsStream || options.measureTtft === true;
+  const measureTtft = options.measureTtft === true;
 
   for (const candidate of chain) {
     const model = candidate.model;
@@ -118,8 +117,23 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     // se cuelan por el mismo hueco.
     reserve(model.providerId, model.id, estimate.total);
 
-    const result = await callChat(provider, secret, { ...body, model: model.id, stream: streamUpstream }, { signal });
+    // Se pide troceado si el cliente lo quiere, o si hay que medir el TTFT y este modelo
+    // no nos ha dicho ya que no sabe. La respuesta se rearma antes de contestar, así que
+    // el cliente no nota nada.
+    let streamUpstream = wantsStream || (measureTtft && !model.streamingUnsupported);
+
+    let result = await callChat(provider, secret, { ...body, model: model.id, stream: streamUpstream }, { signal });
     applySnapshot(model.providerId, model.id, result.rateLimit);
+
+    // El streaming lo hemos añadido nosotros, así que su rechazo no puede costarle nada
+    // al modelo: se reintenta de una pieza y se apunta para no volver a pedírselo. Medir
+    // el TTFT es un extra y nunca debe convertir una petición buena en un fallo.
+    if (!result.ok && streamUpstream && !wantsStream && rejectedStreaming(result.kind)) {
+      markStreamingUnsupported(model.providerId, model.id);
+      streamUpstream = false;
+      result = await callChat(provider, secret, { ...body, model: model.id, stream: false }, { signal });
+      applySnapshot(model.providerId, model.id, result.rateLimit);
+    }
 
     if (!result.ok) {
       handleFailure(model, result.kind, result.message, result.retryAfterMs, estimate);
@@ -150,6 +164,22 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 
     const opened = await openStream(result.response, result.startedAt);
     if (!opened.ok) {
+      // Devolvió 200 y un stream que no sirve. Si el troceado era idea nuestra, se
+      // reintenta de una pieza en vez de castigar al modelo por algo que no pedía.
+      if (!wantsStream) {
+        markStreamingUnsupported(model.providerId, model.id);
+        const plain = await callChat(provider, secret, { ...body, model: model.id, stream: false }, { signal });
+        applySnapshot(model.providerId, model.id, plain.rateLimit);
+        if (plain.ok) {
+          const finished = await readJson(plain.response);
+          if (finished.ok) {
+            const totalMs = performance.now() - plain.startedAt;
+            const usage = readUsage(finished.payload);
+            finalizeAccounting(model, estimate, usage, null, totalMs);
+            return { ok: true, stream: false, model, payload: finished.payload, ttftMs: null, totalMs, usage, attempts };
+          }
+        }
+      }
       handleFailure(model, opened.kind, opened.message, null, estimate);
       attempts.push({ providerId: model.providerId, modelId: model.id, errorKind: opened.kind, message: opened.message, ms: since() });
       if (!shouldTryNextCandidate(opened.kind)) return { ok: false, attempts };
@@ -190,6 +220,18 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
   }
 
   return { ok: false, attempts };
+}
+
+/**
+ * ¿Este error puede ser un «no sé servir esto troceado»?
+ *
+ * Solo un 400, que es como se rechaza un parámetro que no se admite. Un 5xx tienta,
+ * pero no dice nada sobre el streaming: reintentarlo sin trocear duplicaría las llamadas
+ * a un proveedor que ya está fallando, y gastaría cuota para nada. Un 429 o un 401,
+ * igual. El otro caso legítimo —200 con un stream inservible— se trata aparte.
+ */
+function rejectedStreaming(kind: ErrorKind): boolean {
+  return kind === 'bad_request';
 }
 
 function handleFailure(

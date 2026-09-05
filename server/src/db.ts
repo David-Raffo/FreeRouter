@@ -130,6 +130,9 @@ function migrate(database: DB): void {
 
   addColumnIfMissing(database, 'models', 'quality_source', 'TEXT');
   addColumnIfMissing(database, 'models', 'requires_identified_account', 'INTEGER');
+  // 1 cuando se ha comprobado que el modelo NO admite respuestas troceadas. Se aprende
+  // del primer rechazo y evita volver a intentarlo en cada petición.
+  addColumnIfMissing(database, 'models', 'streaming_unsupported', 'INTEGER');
   addColumnIfMissing(database, 'request_log', 'tps', 'REAL');
   addColumnIfMissing(database, 'request_log', 'prompt', 'TEXT');
   addColumnIfMissing(database, 'request_log', 'response', 'TEXT');

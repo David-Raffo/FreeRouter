@@ -126,6 +126,12 @@ export function replaceModels(providerId: ProviderId, models: ModelInfo[]): void
 
 export interface StoredModel extends ModelInfo {
   enabled: boolean;
+  /**
+   * El proveedor rechazó servir este modelo troceado. Se aprende del primer rechazo
+   * para no volver a pedírselo: la medición del TTFT es un extra y nunca debe costar
+   * una petición fallida.
+   */
+  streamingUnsupported: boolean;
 }
 
 const ENABLED_MODELS_SQL = `
@@ -152,8 +158,21 @@ function rowToModel(row: Record<string, unknown>): StoredModel {
     qualityScore: (row.quality_score as number | null) ?? null,
     qualitySource: (row.quality_source as QualitySource | null) ?? null,
     requiresIdentifiedAccount: row.requires_identified_account === 1,
+    streamingUnsupported: row.streaming_unsupported === 1,
     enabled: row.enabled === 1,
   };
+}
+
+/**
+ * Deja constancia de que un modelo no admite streaming.
+ *
+ * No desactiva nada: el modelo sigue siendo perfectamente utilizable, solo que se le
+ * pedirá la respuesta de una pieza y por tanto no tendrá TTFT.
+ */
+export function markStreamingUnsupported(providerId: ProviderId, modelId: string): void {
+  getDb()
+    .prepare('UPDATE models SET streaming_unsupported = 1 WHERE provider_id = ? AND model_id = ?')
+    .run(providerId, modelId);
 }
 
 export function setModelEnabled(providerId: ProviderId, modelId: string, enabled: boolean): void {

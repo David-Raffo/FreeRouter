@@ -535,12 +535,30 @@ todos modos; lo único que cambia es que ahora hay TTFT.
 
 Se apaga con la casilla «Medir TTFT siempre» de la pestaña Peticiones.
 
-Dos detalles que hacen que esto sea seguro:
+No cuesta tiempo. Medido sobre 24 peticiones alternando los dos modos contra el mismo
+modelo, para que la comparación fuese limpia:
 
-- Si un proveedor **ignora** la petición de streaming y contesta de una pieza igualmente,
-  se lee tal cual. Solo se pierde el TTFT, que en ese caso no existía.
-- Si el proveedor no manda `usage` en el stream, los tokens se estiman por longitud en
-  vez de perderse: si no, se quedarían sin descontar de la cuota diaria y sin tok/s.
+| | ms por token | dispersión (p25-p75) |
+| --- | --- | --- |
+| Con streaming interno | 2,73 | 0,09 |
+| De una pieza | 2,73 | 0,19 |
+
+Es el mismo trabajo del modelo; lo único que cambia es cómo se empaqueta el transporte.
+
+**Y nunca puede provocar un error**, porque medir el TTFT es un extra y no debe costar ni
+una petición. Los tres casos:
+
+- El proveedor **ignora** la petición de troceado y contesta de una pieza. Se lee tal
+  cual; solo se pierde el TTFT, que ahí no existía.
+- El proveedor la **rechaza** con un 400. Se reintenta el mismo modelo sin trocear —no
+  se pasa a otro— y queda apuntado para no volver a pedírselo nunca. Ese rechazo no
+  cuenta como fallo ni ensucia la salud del modelo. Solo un 400 dispara esto: un 5xx no
+  dice nada sobre el streaming, y reintentarlo duplicaría las llamadas a un proveedor
+  que ya está fallando.
+- El proveedor responde 200 con un stream inservible. Igual: reintento de una pieza y
+  apuntado.
+- Si el stream no trae `usage`, los tokens se estiman por longitud en vez de perderse:
+  si no, se quedarían sin descontar de la cuota diaria y sin tok/s.
 
 Guardar prompts y respuestas está activado por defecto —es lo que hace útil el
 historial— pero son datos sensibles que quedan en la base de datos local. Se puede

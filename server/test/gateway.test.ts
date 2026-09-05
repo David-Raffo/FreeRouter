@@ -316,6 +316,46 @@ describe('gateway', () => {
     assert.equal(detail?.timeline.find((a) => a.ok)?.ttftMs, null, 'sin medir, no hay TTFT que inventar');
   });
 
+  it('un proveedor que rechaza el streaming no se lleva un fallo: se reintenta de una pieza', async () => {
+    // Medir el TTFT es un extra nuestro. Si el proveedor no sabe servir troceado, eso no
+    // puede convertir una petición que iba a salir bien en un error ni ensuciar la salud
+    // del modelo.
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    let vistas = 0;
+    responders.groq = (body) => {
+      vistas += 1;
+      if (body.stream === true) return status(400, 'stream is not supported for this model');
+      return jsonOk(body);
+    };
+
+    const response = await chat(app, seedKey('calidad'));
+
+    assert.equal(response.statusCode, 200, 'la petición sale adelante igualmente');
+    assert.equal(response.headers['x-freerouter-model'], 'groq/groq-modelo', 'y con el mismo modelo');
+    assert.equal(vistas, 2, 'un rechazo y el reintento sin trocear');
+
+    const detail = requestDetail(Number(recentRequests(1)[0]?.id));
+    assert.equal(detail?.timeline.length, 1, 'el rechazo no cuenta como intento fallido');
+    assert.equal(detail?.timeline[0]?.ok, true);
+    assert.equal(allHealth().find((h) => h.modelId === 'groq-modelo')?.consecutiveFailures ?? 0, 0);
+  });
+
+  it('y no se le vuelve a pedir troceado nunca más', async () => {
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    const pedidas: unknown[] = [];
+    responders.groq = (body) => {
+      pedidas.push(body.stream);
+      if (body.stream === true) return status(400, 'stream is not supported');
+      return jsonOk(body);
+    };
+
+    const key = seedKey('calidad');
+    await chat(app, key);
+    await chat(app, key);
+
+    assert.deepEqual(pedidas, [true, false, false], 'se aprende del primer rechazo');
+  });
+
   it('rearmando la respuesta no se pierden las llamadas a herramientas', async () => {
     // Los argumentos llegan troceados por índice: si el rearmado no los junta, el
     // cliente recibe una llamada con el JSON partido por la mitad.

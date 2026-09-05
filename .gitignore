@@ -12,3 +12,7 @@ data/
 .claude/
 .DS_Store
 *.tsbuildinfo
+
+# Ficheros de trabajo temporales. Nunca al repositorio: han llegado a contener
+# una API key en claro y una cookie de sesion.
+*.tmp
