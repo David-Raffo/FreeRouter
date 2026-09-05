@@ -137,18 +137,87 @@ describe('scoring por perfil', () => {
     assert.equal(scored[0]?.model.id, 'genera-rapido');
   });
 
-  it('un candidato único no queda penalizado por no tener con quién compararse', () => {
-    const solo = scoreCandidates(
+  it('la puntuación de un modelo no depende de quién más esté en el grupo', () => {
+    // La escala es absoluta, no relativa. Con normalización contra el grupo, este mismo
+    // modelo sacaba un 1 estando solo y bajaba al entrar otro más rápido: su nota
+    // dependía de la compañía, no de él.
+    const solo = {
+      model: model({ providerId: 'groq', id: 'solo' }),
+      health: health({ providerId: 'groq', modelId: 'solo', ttftMs: 150, tps: 100, samples: 5 }),
+    };
+    const veloz = {
+      model: model({ providerId: 'cerebras', id: 'veloz' }),
+      health: health({ providerId: 'cerebras', modelId: 'veloz', ttftMs: 50, tps: 900, samples: 5 }),
+    };
+
+    const aSolas = scoreCandidates([solo], 'rapido')[0];
+    const acompanado = scoreCandidates([solo, veloz], 'rapido').find((c) => c.model.id === 'solo');
+
+    assert.equal(aSolas?.speedNorm, acompanado?.speedNorm);
+    assert.equal(aSolas?.qualityNorm, acompanado?.qualityNorm);
+    assert.equal(aSolas?.score, acompanado?.score);
+  });
+
+  it('por encima de 200 tok/s la velocidad extra ya no compra puntos', () => {
+    // Era lo que ponía a allam-2-7b (calidad 11, 667 tok/s) por delante de modelos
+    // mucho más capaces: bastaba ser el más rápido para llevarse el máximo.
+    const rapidisimo = scoreCandidates(
+      [{ model: model({ providerId: 'groq', id: 'a' }), health: health({ providerId: 'groq', modelId: 'a', ttftMs: 200, tps: 900, samples: 5 }) }],
+      'rapido',
+    )[0];
+    const suficiente = scoreCandidates(
+      [{ model: model({ providerId: 'groq', id: 'b' }), health: health({ providerId: 'groq', modelId: 'b', ttftMs: 200, tps: 200, samples: 5 }) }],
+      'rapido',
+    )[0];
+    assert.equal(rapidisimo?.speedNorm, suficiente?.speedNorm, '900 y 200 tok/s valen lo mismo');
+
+    const lento = scoreCandidates(
+      [{ model: model({ providerId: 'groq', id: 'c' }), health: health({ providerId: 'groq', modelId: 'c', ttftMs: 200, tps: 20, samples: 5 }) }],
+      'rapido',
+    )[0];
+    assert.ok((lento?.speedNorm ?? 1) < (suficiente?.speedNorm ?? 0), 'por debajo del techo sí se nota');
+  });
+
+  it('un modelo muy rápido pero muy flojo no gana ni en el perfil rápido', () => {
+    // El caso real: con el mismo prompt, al fallar el primer candidato el router caía en
+    // un modelo de calidad 11 solo porque iba a 667 tok/s.
+    const scored = scoreCandidates(
       [
         {
-          model: model({ providerId: 'groq', id: 'solo' }),
-          health: health({ providerId: 'groq', modelId: 'solo', ttftMs: 150, tps: 100, samples: 5 }),
+          model: model({ providerId: 'groq', id: 'flojo-y-veloz', qualityScore: 11 }),
+          health: health({ providerId: 'groq', modelId: 'flojo-y-veloz', ttftMs: 350, tps: 667, samples: 5 }),
+        },
+        {
+          model: model({ providerId: 'groq', id: 'capaz', qualityScore: 41 }),
+          health: health({ providerId: 'groq', modelId: 'capaz', ttftMs: 2700, tps: 172, samples: 5 }),
         },
       ],
       'rapido',
     );
-    assert.equal(solo[0]?.speedNorm, 1);
-    assert.equal(solo[0]?.qualityNorm, 1);
+    assert.equal(scored[0]?.model.id, 'capaz');
+  });
+
+  it('la calidad bajo el suelo hunde la puntuación, pero no expulsa al modelo', () => {
+    const scored = scoreCandidates(
+      [
+        {
+          model: model({ providerId: 'cloudflare', id: 'inservible', qualityScore: 1 }),
+          health: health({ providerId: 'cloudflare', modelId: 'inservible', ttftMs: 130, tps: 250, samples: 5 }),
+        },
+        {
+          model: model({ providerId: 'groq', id: 'normal', qualityScore: 30 }),
+          health: health({ providerId: 'groq', modelId: 'normal', ttftMs: 900, tps: 90, samples: 5 }),
+        },
+      ],
+      'rapido',
+    );
+    // Perfecto en velocidad y aun así el último: un modelo de calidad 1 no sirve por
+    // rápido que sea.
+    assert.equal(scored[0]?.model.id, 'normal');
+    assert.equal(scored[1]?.model.id, 'inservible');
+    // Pero sigue en la lista: mejor un modelo malo que ningún modelo.
+    assert.equal(scored.length, 2);
+    assert.ok((scored[1]?.score ?? 1) > 0);
   });
 });
 

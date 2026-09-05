@@ -97,15 +97,23 @@ export type ErrorKind =
 /**
  * ¿Tiene sentido probar con el SIGUIENTE candidato tras este error?
  *
- * Casi siempre sí: un 402 de una cuenta, un 401 de un modelo restringido o un 429
- * no dicen nada sobre los demás candidatos. La única excepción es `bad_request`, que
- * señala un problema de la propia petición y por tanto fallaría igual en todos.
+ * Siempre. Un 402 de una cuenta, un 401 de un modelo restringido o un 429 no dicen nada
+ * sobre los demás candidatos, y `context_length` continúa porque el siguiente puede
+ * tener una ventana más grande.
  *
- * `context_length` sí continúa a propósito: el siguiente candidato puede tener una
- * ventana más grande, que es justamente para lo que sirve la cadena.
+ * `bad_request` también continúa, aunque en teoría un 400 sea culpa de la petición. En
+ * la práctica no lo es: OpenCode devuelve 400 con «Upstream request failed: Model is
+ * unavailable», que es un problema suyo disfrazado de error del cliente. Cortar la
+ * cadena ahí le devolvía al cliente un fallo que otro proveedor habría atendido sin
+ * problema.
+ *
+ * El coste de equivocarse es asimétrico. Si el 400 era de verdad culpa de la petición,
+ * se gastan hasta tres llamadas más —la cadena está limitada a cuatro— y el cliente
+ * acaba recibiendo el mismo error, que además se devuelve como 400 y no como 502 cuando
+ * todos los candidatos coinciden en rechazarla. Si no lo era, se salva la petición.
  */
-export function shouldTryNextCandidate(kind: ErrorKind): boolean {
-  return kind !== 'bad_request';
+export function shouldTryNextCandidate(_kind: ErrorKind): boolean {
+  return true;
 }
 
 export interface ValidationResult {

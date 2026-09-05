@@ -9,7 +9,7 @@ import type { Profile, StoredModel } from '../store.js';
 export interface ProfileWeights {
   /** Peso de la calidad objetiva (Intelligence Index). */
   quality: number;
-  /** Peso de la velocidad medida (TTFT). */
+  /** Peso de la velocidad medida (tok/s y TTFT). */
   speed: number;
 }
 
@@ -39,43 +39,30 @@ export interface ScoredCandidate extends Candidate {
 /**
  * Ordena los candidatos de mejor a peor para un perfil.
  *
- * Las dos componentes se normalizan contra el propio conjunto de candidatos: 1 para el
- * mejor, 0 para el peor. Lo que importa no son los valores absolutos sino cuál es la
- * mejor opción de las que hay disponibles ahora mismo.
+ * Las tres componentes se miden en **escala absoluta**, no relativa al grupo. La versión
+ * anterior normalizaba cada métrica contra los propios candidatos —1 para el mejor, 0
+ * para el peor— y eso tenía dos vicios: en un grupo de modelos lentos alguien sacaba un
+ * 1 de velocidad igualmente, y el más rápido se llevaba la puntuación máxima aunque su
+ * ventaja fuese imperceptible. Con escala absoluta, un modelo vale lo que vale.
  *
- * Es importante que ambas usen la misma escala. El Intelligence Index de los modelos
- * abiertos vive entre ~20 y ~60, así que dividirlo entre 100 lo dejaría siempre por
- * debajo de 0,6 mientras la velocidad sí llega a 1 — y el perfil `calidad` pesaría
- * bastante menos de lo que anuncia su tabla de pesos.
+ *   score = (peso_calidad · calidad + peso_velocidad · velocidad) · penalización
  *
- * La velocidad, a su vez, combina dos medidas: los tokens por segundo pesan más que el
- * TTFT porque en cuanto la respuesta pasa de un par de frases es el ritmo, y no el
- * arranque, lo que determina cuánto se espera.
- *
- * Un modelo sin medidas hereda la mediana del grupo, para que no salga favorecido ni
- * penalizado por el mero hecho de ser nuevo; la calibración le pondrá su número.
+ * Un modelo sin medidas se queda en 0,5 de velocidad: ni ventaja ni castigo por ser
+ * nuevo. La calibración le pondrá su número.
  */
 export function scoreCandidates(candidates: Candidate[], profile: Profile): ScoredCandidate[] {
   if (candidates.length === 0) return [];
   const weights = PROFILE_WEIGHTS[profile];
 
-  // Cada métrica se completa con la mediana de las conocidas antes de normalizar.
-  const ttfts = fillWithMedian(candidates.map((candidate) => candidate.health.ttftMs));
-  const rates = fillWithMedian(candidates.map((candidate) => candidate.health.tps));
-
-  const ttftRange = range(ttfts);
-  const rateRange = range(rates);
-
-  const qualities = candidates.map((candidate) => candidate.model.qualityScore ?? DEFAULT_QUALITY);
-  const bestQuality = Math.max(...qualities);
-  const worstQuality = Math.min(...qualities);
-
   return candidates
-    .map((candidate, index) => {
-      const qualityNorm = normalizeQuality(qualities[index]!, worstQuality, bestQuality);
-      const ttftNorm = normalizeLog(ttfts[index] ?? null, ttftRange, 'lower');
-      const rateNorm = normalizeLog(rates[index] ?? null, rateRange, 'higher');
-      const speedNorm = SPEED_WEIGHTS.rate * rateNorm + SPEED_WEIGHTS.ttft * ttftNorm;
+    .map((candidate) => {
+      const quality = candidate.model.qualityScore ?? DEFAULT_QUALITY;
+      const qualityNorm = normalizeQuality(quality);
+      const speedNorm =
+        SPEED_WEIGHTS.rate * normalizeRate(candidate.health.tps) +
+        SPEED_WEIGHTS.ttft * normalizeTtft(candidate.health.ttftMs);
+
+      const base = weights.quality * qualityNorm + weights.speed * speedNorm;
 
       return {
         ...candidate,
@@ -83,7 +70,7 @@ export function scoreCandidates(candidates: Candidate[], profile: Profile): Scor
         speedNorm,
         ttftMs: candidate.health.ttftMs,
         tps: candidate.health.tps,
-        score: weights.quality * qualityNorm + weights.speed * speedNorm,
+        score: base * qualityPenalty(quality),
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -96,55 +83,69 @@ export function scoreCandidates(candidates: Candidate[], profile: Profile): Scor
  */
 export const SPEED_WEIGHTS = { rate: 0.65, ttft: 0.35 };
 
-/** Sustituye los huecos por la mediana de los valores conocidos. */
-function fillWithMedian(values: Array<number | null>): Array<number | null> {
-  const known = values.filter((value): value is number => value !== null && value > 0).sort((a, b) => a - b);
-  const fallback = known.length > 0 ? median(known) : null;
-  return values.map((value) => (value !== null && value > 0 ? value : fallback));
-}
+/**
+ * Por encima de esto, más tokens por segundo ya no se notan.
+ *
+ * A 200 tok/s una respuesta de cien tokens sale en medio segundo. Que un modelo vaya a
+ * 667 no la hace perceptiblemente mejor, pero antes le daba la puntuación máxima de
+ * velocidad y lo colocaba por delante de modelos mucho más capaces. Saturar aquí es lo
+ * que impide que la velocidad bruta compre el primer puesto.
+ */
+export const SPEED_SATURATION_TPS = 200;
 
-function range(values: Array<number | null>): { min: number; max: number } | null {
-  const valid = values.filter((value): value is number => value !== null && value > 0);
-  if (valid.length === 0) return null;
-  return { min: Math.min(...valid), max: Math.max(...valid) };
-}
+/** Por debajo de esto el arranque ya se percibe como instantáneo. */
+export const TTFT_FLOOR_MS = 300;
+
+/** A partir de aquí el arranque es malo se mire como se mire. */
+export const TTFT_CEILING_MS = 10_000;
+
+/**
+ * Suelo de calidad. Por debajo, la puntuación se hunde.
+ *
+ * No es un filtro: un modelo flojo sigue siendo mejor que ningún modelo, así que se
+ * queda en la cadena como último recurso. Pero deja de competir por el primer puesto,
+ * que es lo que hacía cuando era muy rápido. El castigo es cuadrático para que la caída
+ * sea de verdad pronunciada: con el suelo en 15, un 11 conserva la mitad de su
+ * puntuación y un 1 se queda en la milésima parte.
+ */
+export const QUALITY_FLOOR = 15;
+
+/**
+ * Referencia de la escala de calidad: el mejor Intelligence Index que se ve en el tier
+ * gratuito. Dividir entre 100 —el máximo teórico— dejaría a todos por debajo de 0,5 y el
+ * perfil `calidad` pesaría bastante menos de lo que anuncia su tabla.
+ */
+export const QUALITY_REFERENCE = 50;
 
 /** Puntuación asumida para un modelo cuyo índice no se pudo resolver. */
 const DEFAULT_QUALITY = 22;
 
-/** 1 para el mejor del grupo, 0 para el peor. Lineal: el índice ya es una escala lineal. */
-function normalizeQuality(quality: number, worst: number, best: number): number {
-  if (best <= worst) return 1;
-  return clamp01((quality - worst) / (best - worst));
+function normalizeQuality(quality: number): number {
+  return clamp01(quality / QUALITY_REFERENCE);
+}
+
+function qualityPenalty(quality: number): number {
+  if (quality >= QUALITY_FLOOR) return 1;
+  const ratio = clamp01(quality / QUALITY_FLOOR);
+  return ratio * ratio;
 }
 
 /**
- * Normaliza a 0-1 dentro del grupo, en escala logarítmica: la diferencia entre 200 ms
- * y 400 ms importa mucho más que entre 5.000 ms y 5.200 ms, y lo mismo al revés con
- * los tokens por segundo.
- *
- * Devuelve 0,5 cuando no hay nada con lo que comparar, para no inventar una ventaja.
+ * Tokens por segundo, en escala logarítmica y saturada. Logarítmica porque la diferencia
+ * entre 10 y 20 tok/s importa mucho más que entre 190 y 200.
  */
-function normalizeLog(
-  value: number | null,
-  bounds: { min: number; max: number } | null,
-  direction: 'higher' | 'lower',
-): number {
-  // Nadie tiene medida, o este candidato no la tiene: ni ventaja ni penalización.
-  if (bounds === null || value === null || value <= 0) return 0.5;
-  // Todos empatados: nadie debe perder puntos por ello.
-  if (bounds.max <= bounds.min) return 1;
-  const span = Math.log(bounds.max) - Math.log(bounds.min);
-  const position = (Math.log(value) - Math.log(bounds.min)) / span;
-  // La dirección se aplica DESPUÉS de resolver los casos degenerados: invertir un
-  // empate resuelto a 1 lo convertiría en 0 y penalizaría a todos por igual.
-  return clamp01(direction === 'higher' ? position : 1 - position);
+function normalizeRate(tps: number | null): number {
+  if (tps === null || tps <= 0) return 0.5;
+  return clamp01(Math.log1p(Math.min(tps, SPEED_SATURATION_TPS)) / Math.log1p(SPEED_SATURATION_TPS));
 }
 
-function median(sorted: number[]): number {
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) return sorted[mid]!;
-  return (sorted[mid - 1]! + sorted[mid]!) / 2;
+/** TTFT, también logarítmico, con suelo y techo absolutos. */
+function normalizeTtft(ttftMs: number | null): number {
+  if (ttftMs === null || ttftMs <= 0) return 0.5;
+  if (ttftMs <= TTFT_FLOOR_MS) return 1;
+  if (ttftMs >= TTFT_CEILING_MS) return 0;
+  const span = Math.log(TTFT_CEILING_MS) - Math.log(TTFT_FLOOR_MS);
+  return clamp01(1 - (Math.log(ttftMs) - Math.log(TTFT_FLOOR_MS)) / span);
 }
 
 function clamp01(value: number): number {

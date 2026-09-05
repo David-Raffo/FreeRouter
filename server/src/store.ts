@@ -373,13 +373,15 @@ export interface LogEntry {
   response: string | null;
   /** A quién se intentó y con qué resultado, en orden. */
   timeline: AttemptDetail[];
+  /** Tiempo gastado dentro de FreeRouter, sin contar la espera a los proveedores. */
+  routerMs: number | null;
 }
 
 export function logRequest(entry: LogEntry): void {
   getDb()
     .prepare(
-      `INSERT INTO request_log (ts, api_key_id, provider_id, model_id, profile, ok, ttft_ms, total_ms, tokens_in, tokens_out, error_kind, attempts, tps, prompt, response, attempts_detail)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO request_log (ts, api_key_id, provider_id, model_id, profile, ok, ttft_ms, total_ms, tokens_in, tokens_out, error_kind, attempts, tps, prompt, response, attempts_detail, router_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       new Date().toISOString(),
@@ -398,6 +400,7 @@ export function logRequest(entry: LogEntry): void {
       truncate(entry.prompt),
       truncate(entry.response),
       entry.timeline.length > 0 ? JSON.stringify(entry.timeline) : null,
+      entry.routerMs,
     );
   pruneRequestLog();
 }
@@ -443,14 +446,23 @@ export interface RequestDetail {
   prompt: string | null;
   response: string | null;
   timeline: AttemptDetail[];
+  /** Tiempo gastado decidiendo, frente al que se fue esperando a los proveedores. */
+  routerMs: number | null;
 }
 
 export function requestDetail(id: number): RequestDetail | null {
   const row = getDb()
-    .prepare('SELECT prompt, response, attempts_detail FROM request_log WHERE id = ?')
-    .get(id) as { prompt: string | null; response: string | null; attempts_detail: string | null } | undefined;
+    .prepare('SELECT prompt, response, attempts_detail, router_ms FROM request_log WHERE id = ?')
+    .get(id) as
+    | { prompt: string | null; response: string | null; attempts_detail: string | null; router_ms: number | null }
+    | undefined;
   if (!row) return null;
-  return { prompt: row.prompt, response: row.response, timeline: parseTimeline(row.attempts_detail) };
+  return {
+    prompt: row.prompt,
+    response: row.response,
+    timeline: parseTimeline(row.attempts_detail),
+    routerMs: row.router_ms,
+  };
 }
 
 /** Las peticiones anteriores a esta función no tienen cronología; devuelven una vacía. */

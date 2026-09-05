@@ -81,7 +81,7 @@ function responseText(payload: Record<string, unknown>): string | null {
  */
 function timelineOf(
   attempts: Attempt[],
-  winner?: { providerId: string; modelId: string; ms: number; ttftMs: number },
+  winner?: { providerId: string; modelId: string; ms: number; ttftMs: number | null },
 ): AttemptDetail[] {
   const rows: AttemptDetail[] = attempts.map((attempt) => ({
     providerId: attempt.providerId,
@@ -213,6 +213,11 @@ async function serve(
   body: Record<string, unknown>,
   dialect: Dialect,
 ): Promise<unknown> {
+  // Lo que tarda FreeRouter en decidir, frente a lo que se va esperando a los
+  // proveedores. Es la única forma de responder a «¿por qué ha tardado tanto?» sin
+  // suponer: si esto son décimas de milisegundo, el tiempo es de ellos.
+  const routerStartedAt = performance.now();
+
   const estimate = estimateTokens(body);
   const routed = route({
     profile: auth.profile,
@@ -220,6 +225,7 @@ async function serve(
     estimate,
     usesTools: requestUsesTools(body),
   });
+  const decisionMs = performance.now() - routerStartedAt;
 
   if (routed.chain.length === 0) {
     logRequest({
@@ -238,17 +244,32 @@ async function serve(
       prompt: renderPrompt(body),
       response: null,
       timeline: [],
+      routerMs: decisionMs,
     });
     return reply.code(503).send(openAiError(explainNoCandidates(routed), 'no_available_model'));
   }
 
   const upstreamBody = stripFields(body);
+  const beforeUpstream = performance.now();
   const result = await execute({
     body: upstreamBody,
     estimate,
     chain: routed.chain,
     signal: clientAbortSignal(reply),
   });
+
+  /**
+   * Coste propio: lo que se tardó en decidir más lo que se gastó fuera de las llamadas
+   * a proveedores. Restar los intentos deja solo lo nuestro, que es lo que se quiere
+   * mantener a ras de suelo.
+   */
+  const routerOverhead = (): number => {
+    const spentInProviders = result.ok
+      ? result.attempts.reduce((total, attempt) => total + attempt.ms, 0) +
+        (result.stream ? result.ttftMs ?? 0 : result.totalMs)
+      : result.attempts.reduce((total, attempt) => total + attempt.ms, 0);
+    return Math.max(0, decisionMs + (performance.now() - beforeUpstream - spentInProviders));
+  };
 
   if (!result.ok) {
     const last = result.attempts[result.attempts.length - 1];
@@ -268,8 +289,28 @@ async function serve(
       prompt: renderPrompt(body),
       response: null,
       timeline: timelineOf(result.attempts),
+      routerMs: routerOverhead(),
     });
     const detail = result.attempts.map((a) => `${a.providerId}/${a.modelId}: ${a.message}`).join(' | ');
+
+    // Si TODOS los candidatos la rechazaron por malformada, lo más probable es que de
+    // verdad lo esté: se devuelve 400 con su mensaje, que es lo que deja depurarla. Un
+    // solo 400 entre varios errores distintos no basta para culpar a la petición —hay
+    // proveedores que responden 400 a problemas suyos— y ahí manda el 502.
+    const everyoneRejected =
+      result.attempts.length > 0 && result.attempts.every((attempt) => attempt.errorKind === 'bad_request');
+    if (everyoneRejected) {
+      return reply
+        .code(400)
+        .header('x-freerouter-attempts', String(result.attempts.length))
+        .send(
+          openAiError(
+            `Los ${result.attempts.length} proveedores probados rechazaron la petición. ${detail}`,
+            'invalid_request_error',
+          ),
+        );
+    }
+
     return reply
       .code(502)
       .header('x-freerouter-attempts', String(result.attempts.length))
@@ -277,7 +318,10 @@ async function serve(
   }
 
   const label = `${result.model.providerId}/${result.model.id}`;
-  reply.header('x-freerouter-model', label).header('x-freerouter-attempts', String(result.attempts.length + 1));
+  reply
+    .header('x-freerouter-model', label)
+    .header('x-freerouter-attempts', String(result.attempts.length + 1))
+    .header('x-freerouter-router-ms', routerOverhead().toFixed(1));
 
   if (!result.stream) {
     logRequest({
@@ -301,6 +345,7 @@ async function serve(
         ms: result.totalMs,
         ttftMs: result.ttftMs,
       }),
+      routerMs: routerOverhead(),
     });
     return reply.send(dialect.nonStream(result.payload, label));
   }
@@ -328,6 +373,7 @@ async function serve(
         ms: totalMs,
         ttftMs: result.ttftMs,
       }),
+      routerMs: routerOverhead(),
     });
   });
 

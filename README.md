@@ -160,8 +160,13 @@ candidatos = modelos que cumplen las capacidades exigidas
            ∩ con cuota disponible
            ∩ no en cuarentena
 
-score = peso_calidad · calidad_normalizada + peso_velocidad · velocidad_normalizada
+score = (peso_calidad · calidad + peso_velocidad · velocidad) · penalización_por_calidad
 ```
+
+Las dos componentes se miden en **escala absoluta**, no comparando con el resto de
+candidatos. Normalizar contra el grupo —1 al mejor, 0 al peor— tenía dos vicios: en un
+grupo de modelos lentos alguno sacaba un 1 de velocidad igualmente, y el más rápido se
+llevaba el máximo aunque su ventaja fuese imperceptible.
 
 | Perfil       | Calidad | Velocidad |
 | ------------ | ------- | --------- |
@@ -169,7 +174,18 @@ score = peso_calidad · calidad_normalizada + peso_velocidad · velocidad_normal
 | `balanceado` | 0,50    | 0,50      |
 | `calidad`    | 0,85    | 0,15      |
 
-- **Velocidad**: combina dos medidas, con el ritmo pesando casi el doble que el arranque.
+- **Velocidad**: combina dos medidas, con el ritmo pesando casi el doble que el arranque,
+  y **satura a 200 tok/s**. A ese ritmo una respuesta de cien tokens sale en medio
+  segundo; que un modelo vaya a 667 no la hace perceptiblemente mejor. Sin ese techo, la
+  velocidad bruta compraba el primer puesto: un modelo de calidad 11 que iba a 667 tok/s
+  se colocaba por delante de otros mucho más capaces. El TTFT tiene sus propios límites
+  absolutos, 300 ms (todo lo que baje de ahí se percibe igual) y 10 s.
+- **Suelo de calidad**: por debajo de **15** de Intelligence Index la puntuación se hunde
+  de forma cuadrática — un 11 conserva la mitad, un 1 se queda en la milésima parte. No
+  es un filtro: el modelo sigue en la cadena como último recurso, porque uno flojo es
+  mejor que ninguno, pero deja de competir por el primer puesto. Hace falta porque en el
+  tier gratuito la mediana de calidad es 11: sin suelo, el router acaba en modelos que no
+  sirven en cuanto el bueno se queda sin cuota.
 
   | Métrica | Peso | Por qué |
   | ------- | ---- | ------- |

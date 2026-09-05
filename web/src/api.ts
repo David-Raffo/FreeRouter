@@ -159,6 +159,8 @@ export interface ActivityDetail {
   response: string | null;
   /** A quién se intentó y en qué orden. Vacío en peticiones anteriores a esta función. */
   timeline: AttemptDetail[];
+  /** Tiempo gastado decidiendo, sin contar la espera a los proveedores. */
+  routerMs: number | null;
 }
 
 export interface AuthState {

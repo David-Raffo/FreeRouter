@@ -49,7 +49,13 @@ export type ExecuteResult =
       stream: false;
       model: StoredModel;
       payload: Record<string, unknown>;
-      ttftMs: number;
+      /**
+       * `null` siempre en no-streaming: sin trocear la respuesta no hay forma de saber
+       * cuándo llegó el primer token. Antes se ponía aquí el tiempo total, que es otra
+       * cosa —una respuesta larga daba «TTFT» de segundos— y además envenenaba la media
+       * de TTFT con la que el router decide.
+       */
+      ttftMs: number | null;
       totalMs: number;
       usage: Usage | null;
       attempts: Attempt[];
@@ -119,8 +125,8 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       }
       const totalMs = performance.now() - result.startedAt;
       const usage = readUsage(finished.payload);
-      finalizeAccounting(model, estimate, usage, totalMs, totalMs);
-      return { ok: true, stream: false, model, payload: finished.payload, ttftMs: totalMs, totalMs, usage, attempts };
+      finalizeAccounting(model, estimate, usage, null, totalMs);
+      return { ok: true, stream: false, model, payload: finished.payload, ttftMs: null, totalMs, usage, attempts };
     }
 
     const opened = await openStream(result.response, result.startedAt);
@@ -270,7 +276,7 @@ async function probeModel(
  * El umbral de tokens sigue existiendo porque una respuesta de tres tokens no da una
  * tasa estable, la mida como la mida.
  */
-export function computeTps(usage: Usage | null, _ttftMs: number, totalMs: number): number | null {
+export function computeTps(usage: Usage | null, _ttftMs: number | null, totalMs: number): number | null {
   if (!usage || usage.completionTokens < MIN_TOKENS_FOR_RATE) return null;
   if (totalMs <= 0) return null;
   return (usage.completionTokens / totalMs) * 1000;
@@ -286,7 +292,7 @@ function finalizeAccounting(
   model: StoredModel,
   estimate: TokenEstimate,
   usage: Usage | null,
-  ttftMs: number,
+  ttftMs: number | null,
   totalMs: number,
 ): void {
   const actualTokens = usage ? usage.promptTokens + usage.completionTokens : estimate.total;

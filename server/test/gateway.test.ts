@@ -270,7 +270,51 @@ describe('gateway', () => {
 
     assert.equal(bueno?.ok, true);
     assert.equal(bueno?.errorKind, null);
-    assert.ok((bueno?.ttftMs ?? -1) >= 0, 'el que respondió sí');
+    // Sin streaming no hay primer token que cronometrar, así que tampoco hay TTFT. Antes
+    // se guardaba aquí el tiempo total, y una respuesta larga aparecía como un TTFT de
+    // varios segundos que además contaminaba la media con la que decide el router.
+    assert.equal(bueno?.ttftMs, null, 'una respuesta no troceada no tiene TTFT');
+    assert.ok((bueno?.ms ?? -1) >= 0, 'el tiempo total sí se guarda');
+  });
+
+  it('en streaming sí se guarda el TTFT, que ahí sí existe', async () => {
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    responders.groq = (body) => sse([chunk('ho', String(body.model)), chunk('la', String(body.model)), '[DONE]']);
+
+    const response = await chat(app, seedKey('calidad'), { stream: true });
+    assert.equal(response.statusCode, 200);
+
+    const detail = requestDetail(Number(recentRequests(1)[0]?.id));
+    const bueno = detail?.timeline.find((attempt) => attempt.ok);
+    assert.ok((bueno?.ttftMs ?? -1) >= 0, 'el primer token sí se puede cronometrar');
+  });
+
+  it('un 400 de un proveedor no se le devuelve al cliente: se prueba con otro', async () => {
+    // OpenCode responde 400 con «Upstream request failed: Model is unavailable», que es
+    // un problema suyo disfrazado de error de la petición. Cortar la cadena ahí dejaba
+    // al cliente con un fallo que otro proveedor atendía sin problema.
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    seedProvider('cerebras', 'cerebras-modelo', 50, 30);
+    responders.groq = () => status(400, 'Upstream request failed: Model is unavailable.');
+
+    const response = await chat(app, seedKey('calidad'));
+
+    assert.equal(response.statusCode, 200, 'la petición se salva por el otro proveedor');
+    assert.equal(response.headers['x-freerouter-model'], 'cerebras/cerebras-modelo');
+  });
+
+  it('si TODOS rechazan la petición por malformada, se devuelve 400 y no 502', async () => {
+    // Cuando el 400 sí es de la petición, insistir no la arregla: lo honesto es
+    // devolverlo como error del cliente, con el motivo, para poder depurarlo.
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    seedProvider('cerebras', 'cerebras-modelo', 50, 30);
+    responders.groq = () => status(400, 'temperature must be <= 2');
+    responders.cerebras = () => status(400, 'temperature must be <= 2');
+
+    const response = await chat(app, seedKey('calidad'));
+
+    assert.equal(response.statusCode, 400);
+    assert.match(String(response.json().error.message), /temperature/);
   });
 
   it('cuando fallan todos, la cronología los recoge igual', async () => {

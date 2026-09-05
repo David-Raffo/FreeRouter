@@ -107,11 +107,24 @@ function ewma(previous: number | null, sample: number): number {
   return previous === null ? sample : previous * (1 - ALPHA) + sample * ALPHA;
 }
 
-export function recordSuccess(providerId: ProviderId, modelId: string, ttftMs: number, tps: number | null): void {
+/**
+ * Una petición que salió bien.
+ *
+ * `ttftMs` puede ser `null`: en una respuesta no troceada no existe el concepto de
+ * primer token, y meter ahí el tiempo total inflaba la media hasta hacerla inservible
+ * —una respuesta larga registraba «TTFT» de varios segundos—. Lo que no se sabe no se
+ * apunta; el tok/s sí se aprovecha, que ese sí se conoce.
+ */
+export function recordSuccess(
+  providerId: ProviderId,
+  modelId: string,
+  ttftMs: number | null,
+  tps: number | null,
+): void {
   const current = healthOf(providerId, modelId);
   upsert({
     ...current,
-    ttftMs: ewma(current.ttftMs, ttftMs),
+    ttftMs: ttftMs === null ? current.ttftMs : ewma(current.ttftMs, ttftMs),
     tps: tps === null ? current.tps : ewma(current.tps, tps),
     lastOkAt: new Date().toISOString(),
     consecutiveFailures: 0,

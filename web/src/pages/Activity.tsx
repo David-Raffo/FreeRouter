@@ -85,6 +85,7 @@ export function Activity({ rows }: { rows: ActivityRow[] }) {
               <th>Perfil</th>
               <th>Modelo elegido</th>
               <th>TTFT</th>
+              <th>Total</th>
               <th>tok/s</th>
               <th>Tokens</th>
               <th>Int.</th>
@@ -132,7 +133,10 @@ function RowPair({
         <td>{row.api_key_name ?? <span className="dim">—</span>}</td>
         <td>{row.profile ?? '—'}</td>
         <td className="mono">{row.model_id ? `${row.provider_id}/${row.model_id}` : '—'}</td>
-        <td>{row.ttft_ms === null ? '—' : `${Math.round(row.ttft_ms)} ms`}</td>
+        <td title={row.ttft_ms === null ? 'Respuesta sin trocear: no hay primer token que cronometrar' : undefined}>
+          {row.ttft_ms === null ? <span className="dim">—</span> : `${Math.round(row.ttft_ms)} ms`}
+        </td>
+        <td>{row.total_ms === null ? <span className="dim">—</span> : duration(row.total_ms)}</td>
         <td>{row.tps === null ? <span className="dim">—</span> : `${Math.round(row.tps)}`}</td>
         <td>
           {row.tokens_in === null && row.tokens_out === null ? '—' : `${row.tokens_in ?? 0} → ${row.tokens_out ?? 0}`}
@@ -142,12 +146,12 @@ function RowPair({
       </tr>
       {open && (
         <tr>
-          <td colSpan={9} style={{ background: 'var(--surface-2)' }}>
+          <td colSpan={10} style={{ background: 'var(--surface-2)' }}>
             {loading ? (
               <span className="dim">Cargando…</span>
             ) : (
               <div className="stack" style={{ padding: '4px 0' }}>
-                <Timeline attempts={detail?.timeline ?? []} />
+                <Timeline attempts={detail?.timeline ?? []} routerMs={detail?.routerMs ?? null} />
                 {row.has_content ? (
                   <>
                     <Block title="Prompt" text={detail?.prompt} />
@@ -179,7 +183,7 @@ function duration(ms: number): string {
  * fallaron, ese tiempo no aparece en ninguna otra columna del historial y la petición
  * parece lenta sin motivo.
  */
-function Timeline({ attempts }: { attempts: AttemptDetail[] }) {
+function Timeline({ attempts, routerMs }: { attempts: AttemptDetail[]; routerMs: number | null }) {
   if (attempts.length === 0) {
     return (
       <div>
@@ -200,11 +204,19 @@ function Timeline({ attempts }: { attempts: AttemptDetail[] }) {
     <div>
       <div className="row spread wrap" style={{ marginBottom: 4 }}>
         <span className="dim">Intentos</span>
-        {wasted > 0 && (
-          <span className="dim">
-            {duration(wasted)} {winner ? 'perdidos antes de acertar' : 'gastados sin respuesta'}
-          </span>
-        )}
+        <span className="dim">
+          {routerMs !== null && (
+            <span title="Tiempo dentro de FreeRouter: elegir candidatos y montar la respuesta. Todo lo demás es espera a los proveedores.">
+              router {routerMs < 1 ? '<1 ms' : duration(routerMs)}
+            </span>
+          )}
+          {wasted > 0 && (
+            <>
+              {routerMs !== null && ' · '}
+              {duration(wasted)} {winner ? 'perdidos antes de acertar' : 'gastados sin respuesta'}
+            </>
+          )}
+        </span>
       </div>
       <div
         style={{

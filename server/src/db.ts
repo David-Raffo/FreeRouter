@@ -136,6 +136,9 @@ function migrate(database: DB): void {
   // Los intentos con su duración, en JSON. Van en una columna y no en una tabla aparte
   // porque solo se leen al abrir una petición concreta, nunca de forma agregada.
   addColumnIfMissing(database, 'request_log', 'attempts_detail', 'TEXT');
+  // Cuánto tardó el propio router en decidir, aparte de lo que tardaran los proveedores.
+  // Sin esta cifra no hay forma de saber si una petición lenta es culpa nuestra.
+  addColumnIfMissing(database, 'request_log', 'router_ms', 'REAL');
 }
 
 /** ALTER idempotente: SQLite no tiene `ADD COLUMN IF NOT EXISTS`. */
