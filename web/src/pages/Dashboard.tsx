@@ -8,6 +8,7 @@ import {
   type ModelsPage,
   type QuotaStatus,
 } from '../api';
+import { ModelName } from '../ui';
 
 const PAGE_SIZE = 25;
 const REFRESH_MS = 5000;
@@ -112,8 +113,7 @@ export function Dashboard() {
             {data.rows.map((model) => (
               <tr key={`${model.providerId}:${model.id}`}>
                 <td>
-                  <span className="dim">{model.providerId}/</span>
-                  <span className="mono">{model.id}</span>
+                  <ModelName providerId={model.providerId} modelId={model.id} />
                 </td>
                 <td>
                   <State model={model} />

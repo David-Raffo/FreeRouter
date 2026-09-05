@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type ActivityDetail, type ActivityRow, type AttemptDetail } from '../api';
+import { ModelName } from '../ui';
 
 /**
  * Historial de peticiones.
@@ -155,7 +156,13 @@ function RowPair({
         </td>
         <td>{row.api_key_name ?? <span className="dim">—</span>}</td>
         <td>{row.profile ?? '—'}</td>
-        <td className="mono">{row.model_id ? `${row.provider_id}/${row.model_id}` : '—'}</td>
+        <td>
+          {row.model_id && row.provider_id ? (
+            <ModelName providerId={row.provider_id} modelId={row.model_id} />
+          ) : (
+            <span className="dim">—</span>
+          )}
+        </td>
         <td
           title={
             row.ttft_ms === null
@@ -181,7 +188,21 @@ function RowPair({
             prompts— y heredarlo estiraba la tabla entera hasta sacar las columnas de
             la pantalla. Dentro del desplegable se escribe en varias líneas.
           */}
-          <td colSpan={10} style={{ background: 'var(--surface-2)', whiteSpace: 'normal' }}>
+          <td colSpan={10} style={{ background: 'var(--surface-2)', whiteSpace: 'normal', padding: 0 }}>
+            {/*
+              El contenido se ancla a la izquierda y se limita al ancho visible. Si la
+              tabla llega a desbordar —una ventana estrecha, un nombre largo—, el
+              desplegable seguiría siendo tan ancho como ella y su texto envolvería
+              fuera de la pantalla, que es justo lo que se quería evitar.
+            */}
+            <div
+              style={{
+                position: 'sticky',
+                left: 0,
+                maxWidth: 'min(100%, calc(100vw - 80px), 1040px)',
+                padding: '8px 10px',
+              }}
+            >
             {loading ? (
               <span className="dim">Cargando…</span>
             ) : (
@@ -199,6 +220,7 @@ function RowPair({
                 )}
               </div>
             )}
+            </div>
           </td>
         </tr>
       )}
@@ -276,8 +298,8 @@ function Timeline({ attempts, routerMs }: { attempts: AttemptDetail[]; routerMs:
               {index + 1}
             </span>
             <span className={`pill ${attempt.ok ? 'ok' : 'bad'}`}>{attempt.ok ? 'ok' : attempt.errorKind ?? 'error'}</span>
-            <span className="mono" style={{ flex: 1, minWidth: 160, overflowWrap: 'anywhere' }}>
-              {attempt.providerId}/{attempt.modelId}
+            <span style={{ flex: 1, minWidth: 160, overflowWrap: 'anywhere' }}>
+              <ModelName providerId={attempt.providerId} modelId={attempt.modelId} />
             </span>
             <span className="mono dim" style={{ whiteSpace: 'nowrap' }}>
               {attempt.ok && attempt.ttftMs !== null ? `TTFT ${duration(attempt.ttftMs)} · ` : ''}
@@ -289,20 +311,37 @@ function Timeline({ attempts, routerMs }: { attempts: AttemptDetail[]; routerMs:
       {attempts
         .filter((attempt) => !attempt.ok && attempt.message)
         .map((attempt, index) => (
-          <div
-            key={index}
-            className="dim"
-            style={{ fontSize: 12, marginTop: 4, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
-          >
-            <span className="mono">
-              {attempt.providerId}/{attempt.modelId}
-            </span>
-            : {attempt.message}
+          <div key={index} style={{ marginTop: 6 }}>
+            <div className="dim" style={{ fontSize: 12, marginBottom: 2 }}>
+              <ModelName providerId={attempt.providerId} modelId={attempt.modelId} />
+            </div>
+            {/*
+              Los proveedores mandan párrafos de una sola línea: el rate limit de Groq
+              nombra el modelo, la organización, el tier y el cubo agotado del tirón. En
+              una celda de tabla, que no parte líneas, eso estiraba la tabla entera.
+            */}
+            <pre className="mono" style={messageBlock}>
+              {attempt.message}
+            </pre>
           </div>
         ))}
     </div>
   );
 }
+
+/** Mismo aspecto que los bloques de prompt y respuesta, pero para texto del proveedor. */
+const messageBlock: React.CSSProperties = {
+  margin: 0,
+  padding: '6px 8px',
+  fontSize: 12,
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
+  borderRadius: 6,
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+  maxHeight: 120,
+  overflowY: 'auto',
+};
 
 function Block({ title, text }: { title: string; text: string | null | undefined }) {
   return (
