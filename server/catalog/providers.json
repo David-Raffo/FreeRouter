@@ -408,6 +408,7 @@
       "consoleUrl": "https://openrouter.ai/keys",
       "failoverRank": 10,
       "quotaScope": "account",
+      "rateLimitPenaltyFactor": 4,
       "defaultLimits": {
         "rpm": 20,
         "tpm": null,

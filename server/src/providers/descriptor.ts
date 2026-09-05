@@ -30,6 +30,16 @@ export interface ProviderDescriptor {
   freeTier: FreeTierInfo;
 
   /**
+   * Multiplica el castigo tras un 429. Por defecto 1.
+   *
+   * Sube donde equivocarse sale caro. En OpenRouter un fallo tarda 532 ms de mediana
+   * frente a los 76 ms de Groq, y además gasta una de las 50 peticiones diarias porque
+   * allí las fallidas también cuentan: reintentar pronto cuesta el doble que en el
+   * resto, así que se espera más antes de volver.
+   */
+  rateLimitPenaltyFactor?: number;
+
+  /**
    * `true` cuando el proveedor mezcla modelos gratuitos y de pago y hay que quedarse
    * solo con los de precio cero. `false` cuando la cuenta entera es de tier gratuito
    * y por tanto todos sus modelos lo son.

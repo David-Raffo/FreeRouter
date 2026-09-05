@@ -17,6 +17,7 @@ import {
   resetQuotaState,
   settle,
 } from '../src/routing/quota.js';
+import { getProvider } from '../src/providers/registry.js';
 import { computeTps } from '../src/routing/execute.js';
 import { explainNoCandidates, requiredCapabilities, route } from '../src/routing/select.js';
 import { estimateTokens, requestUsesTools } from '../src/routing/tokens.js';
@@ -307,9 +308,33 @@ describe('castigo tras un 429', () => {
 
   it('el primero cuesta un minuto', () => {
     resetQuotaState();
-    penalize('openrouter', 'm', null);
-    const espera = quotaStatus('openrouter', 'm').cooldownMs;
+    penalize('groq', 'm', null);
+    const espera = quotaStatus('groq', 'm').cooldownMs;
     assert.ok(espera > MINUTO * 0.9 && espera <= MINUTO, `esperaba ~1 min, fue ${espera}`);
+  });
+
+  it('en OpenRouter el castigo va multiplicado por cuatro', () => {
+    // Equivocarse ahí sale caro: el fallo tarda siete veces más que en Groq (532 ms
+    // frente a 76 ms de mediana, medido con tráfico real) y encima gasta una de las 50
+    // peticiones diarias, porque las fallidas también cuentan.
+    resetQuotaState();
+    penalize('groq', 'm', null);
+    penalize('openrouter', 'm', null);
+
+    const groq = quotaStatus('groq', 'm').cooldownMs;
+    const openrouter = quotaStatus('openrouter', 'm').cooldownMs;
+    assert.ok(
+      openrouter > groq * 3.5 && openrouter <= groq * 4.2,
+      `OpenRouter debe esperar ~4 veces más: ${openrouter} frente a ${groq}`,
+    );
+    assert.ok(openrouter > MINUTO * 3.5 && openrouter <= MINUTO * 4, `esperaba ~4 min, fue ${openrouter}`);
+  });
+
+  it('el multiplicador de OpenRouter sale del catálogo, no del código', () => {
+    // Un proveedor es datos: si mañana OpenRouter deja de ser caro, se cambia el número
+    // en providers.json y nadie toca el enrutado.
+    assert.equal(getProvider('openrouter')?.rateLimitPenaltyFactor, 4);
+    assert.equal(getProvider('groq')?.rateLimitPenaltyFactor, 1);
   });
 
   it('si se repite, se dobla', () => {
@@ -319,8 +344,8 @@ describe('castigo tras un 429', () => {
     resetQuotaState();
     const esperas: number[] = [];
     for (let i = 0; i < 4; i += 1) {
-      penalize('openrouter', 'm', null);
-      esperas.push(quotaStatus('openrouter', 'm').cooldownMs);
+      penalize('groq', 'm', null);
+      esperas.push(quotaStatus('groq', 'm').cooldownMs);
     }
     assert.ok(esperas[1]! > esperas[0]! * 1.8, '1 → 2 minutos');
     assert.ok(esperas[2]! > esperas[1]! * 1.8, '2 → 4 minutos');
@@ -330,14 +355,14 @@ describe('castigo tras un 429', () => {
   it('una petición que sale bien devuelve el castigo al mínimo', () => {
     // El modelo ha demostrado que vuelve a servir: no puede seguir arrastrando la racha.
     resetQuotaState();
-    penalize('openrouter', 'm', null);
-    penalize('openrouter', 'm', null);
-    penalize('openrouter', 'm', null);
+    penalize('groq', 'm', null);
+    penalize('groq', 'm', null);
+    penalize('groq', 'm', null);
 
-    clearRateLimitStreak('openrouter', 'm');
-    penalize('openrouter', 'm', null);
+    clearRateLimitStreak('groq', 'm');
+    penalize('groq', 'm', null);
 
-    const espera = quotaStatus('openrouter', 'm').cooldownMs;
+    const espera = quotaStatus('groq', 'm').cooldownMs;
     assert.ok(espera <= MINUTO, `tras recuperarse debe volver a costar un minuto, fue ${espera}`);
   });
 

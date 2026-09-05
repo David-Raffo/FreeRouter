@@ -272,9 +272,24 @@ peticiones diarias, porque allí **las fallidas también cuentan**. Con un casti
 en cambio, un pico de un minuto te deja sin tu mejor modelo durante horas. Doblar empieza
 barato y se pone caro solo con quien demuestra estarlo.
 
+**El castigo se multiplica donde equivocarse sale caro.** Cada proveedor lleva su
+`rateLimitPenaltyFactor` en `providers.json`: 1 por defecto, 4 en OpenRouter, que es
+donde un reintento cuesta siete veces más tiempo y encima gasta cuota diaria. Es un
+número del catálogo, no del código: si mañana deja de ser caro, se cambia ahí y el
+enrutado no se entera.
+
+| 429 seguidos | Groq (×1) | OpenRouter (×4) |
+| --- | --- | --- |
+| 1.º | 1 min | 4 min |
+| 2.º | 2 min | 8 min |
+| 3.º | 4 min | 16 min |
+| 4.º | 8 min | 32 min |
+| 6.º | 32 min | 2,1 h |
+| 8.º | 2,1 h | 6 h (tope) |
+
 Dos límites al castigo: si el proveedor manda `retry-after`, sabe más que nosotros y
-manda su cifra; y nunca se aparta un modelo más allá del reinicio diario, porque pasada
-esa hora la cuota vuelve sola.
+manda su cifra —el multiplicador no se le aplica—; y nunca se aparta un modelo más allá
+del reinicio diario, porque pasada esa hora la cuota vuelve sola.
 
 ### Proveedores
 

@@ -188,6 +188,8 @@ export interface Provider {
    * (OpenRouter). Cambia por completo cómo se contabiliza la cuota.
    */
   quotaScope: 'model' | 'account';
+  /** Multiplica el castigo tras un 429. 1 salvo donde reintentar salga caro. */
+  rateLimitPenaltyFactor: number;
 
   /** Ajustes del cuerpo antes de enviarlo (quirks del proveedor). */
   prepareBody?(body: Record<string, unknown>): Record<string, unknown>;

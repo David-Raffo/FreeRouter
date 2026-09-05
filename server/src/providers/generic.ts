@@ -179,6 +179,7 @@ export function buildProvider(descriptor: ProviderDescriptor, overrides: Partial
     failoverRank: descriptor.failoverRank,
     defaultLimits: descriptor.defaultLimits,
     quotaScope: descriptor.quotaScope,
+    rateLimitPenaltyFactor: descriptor.rateLimitPenaltyFactor ?? 1,
 
     // Con clave opcional y campo vacío no se manda cabecera: varios proveedores
     // rechazan un `Bearer ` vacío con 401 en vez de tratarlo como anónimo.

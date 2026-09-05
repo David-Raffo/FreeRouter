@@ -212,7 +212,8 @@ export function applySnapshot(providerId: ProviderId, modelId: string, snapshot:
 /**
  * Aparta un modelo tras un 429, con castigo creciente.
  *
- * El primero cuesta un minuto; si al volver se repite, se dobla, y así hasta el tope.
+ * El primero cuesta un minuto —cuatro en OpenRouter, ver `rateLimitPenaltyFactor`—; si
+ * al volver se repite, se dobla, y así hasta el tope.
  * Un castigo fijo no sirve para los dos casos que existen: con uno corto, un modelo
  * agotado de verdad se reintenta sin parar; con uno largo, un pico de un minuto te deja
  * sin el mejor modelo durante horas. Doblar empieza barato y se pone caro solo con quien
@@ -232,7 +233,11 @@ export function penalize(providerId: ProviderId, modelId: string, retryAfterMs: 
     return;
   }
 
-  const escalated = Math.min(RATE_LIMIT_BASE_MS * 2 ** (streak - 1), RATE_LIMIT_MAX_MS);
+  // Hay proveedores donde equivocarse sale más caro y el castigo se multiplica: en
+  // OpenRouter un fallo tarda siete veces más que en Groq y encima gasta una de las 50
+  // peticiones diarias, porque allí las fallidas también cuentan.
+  const factor = getProvider(providerId)?.rateLimitPenaltyFactor ?? 1;
+  const escalated = Math.min(RATE_LIMIT_BASE_MS * factor * 2 ** (streak - 1), RATE_LIMIT_MAX_MS);
   cooldowns.set(key, Date.now() + Math.min(escalated, msUntilUtcMidnight()));
 }
 
