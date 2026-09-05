@@ -175,7 +175,13 @@ function RowPair({
       </tr>
       {open && (
         <tr>
-          <td colSpan={10} style={{ background: 'var(--surface-2)' }}>
+          {/*
+            Las celdas de la tabla son `nowrap` para que las columnas se lean de un
+            vistazo, pero aquí dentro va texto largo —mensajes de error de proveedor,
+            prompts— y heredarlo estiraba la tabla entera hasta sacar las columnas de
+            la pantalla. Dentro del desplegable se escribe en varias líneas.
+          */}
+          <td colSpan={10} style={{ background: 'var(--surface-2)', whiteSpace: 'normal' }}>
             {loading ? (
               <span className="dim">Cargando…</span>
             ) : (
@@ -270,7 +276,7 @@ function Timeline({ attempts, routerMs }: { attempts: AttemptDetail[]; routerMs:
               {index + 1}
             </span>
             <span className={`pill ${attempt.ok ? 'ok' : 'bad'}`}>{attempt.ok ? 'ok' : attempt.errorKind ?? 'error'}</span>
-            <span className="mono" style={{ flex: 1, minWidth: 160, wordBreak: 'break-all' }}>
+            <span className="mono" style={{ flex: 1, minWidth: 160, overflowWrap: 'anywhere' }}>
               {attempt.providerId}/{attempt.modelId}
             </span>
             <span className="mono dim" style={{ whiteSpace: 'nowrap' }}>
@@ -283,8 +289,15 @@ function Timeline({ attempts, routerMs }: { attempts: AttemptDetail[]; routerMs:
       {attempts
         .filter((attempt) => !attempt.ok && attempt.message)
         .map((attempt, index) => (
-          <div key={index} className="dim" style={{ fontSize: 12, marginTop: 4, wordBreak: 'break-word' }}>
-            <span className="mono">{attempt.providerId}/{attempt.modelId}</span>: {attempt.message}
+          <div
+            key={index}
+            className="dim"
+            style={{ fontSize: 12, marginTop: 4, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+          >
+            <span className="mono">
+              {attempt.providerId}/{attempt.modelId}
+            </span>
+            : {attempt.message}
           </div>
         ))}
     </div>
