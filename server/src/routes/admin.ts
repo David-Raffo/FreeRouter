@@ -312,6 +312,18 @@ export function registerAdminRoutes(app: FastifyInstance): void {
    */
   app.get('/api/settings/logging', async () => ({ logContent: getSetting('log_content') !== 'false' }));
 
+  /**
+   * Medir el TTFT pidiendo streaming a los proveedores aunque el cliente no lo pida.
+   * Se puede apagar: la respuesta al cliente es idéntica en los dos casos, pero apagarlo
+   * deja al router sin TTFT del tráfico que no venga troceado.
+   */
+  app.get('/api/settings/measurement', async () => ({ measureTtft: getSetting('measure_ttft') !== 'false' }));
+
+  app.post<{ Body: { measureTtft?: boolean } }>('/api/settings/measurement', async (request, reply) => {
+    setSetting('measure_ttft', request.body?.measureTtft === false ? 'false' : 'true');
+    return reply.send({ measureTtft: request.body?.measureTtft !== false });
+  });
+
   app.post<{ Body: { logContent?: boolean } }>('/api/settings/logging', async (request, reply) => {
     setSetting('log_content', request.body?.logContent === false ? 'false' : 'true');
     return reply.send({ logContent: request.body?.logContent !== false });

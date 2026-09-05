@@ -522,6 +522,26 @@ ninguna otra métrica. Solo el que respondió tiene TTFT: los demás no llegaron
 nada, así que poner un número ahí sería inventárselo. La cronología son métricas, no
 contenido, de modo que sigue estando aunque el registro de prompts esté apagado.
 
+### Medir el TTFT siempre
+
+Una respuesta que llega de una pieza no tiene «primer token», así que no hay TTFT que
+cronometrar. Eso deja fuera a todo cliente que no use streaming —n8n, sin ir más lejos—
+y el router se queda sin una de sus dos métricas de velocidad por mucho que se le use.
+
+Por eso, por defecto, **FreeRouter le pide la respuesta troceada al proveedor aunque tu
+cliente no lo haya pedido**, cronometra el primer token y vuelve a juntarla antes de
+contestar. Lo que recibes es un `chat.completion` idéntico al que habrías recibido de
+todos modos; lo único que cambia es que ahora hay TTFT.
+
+Se apaga con la casilla «Medir TTFT siempre» de la pestaña Peticiones.
+
+Dos detalles que hacen que esto sea seguro:
+
+- Si un proveedor **ignora** la petición de streaming y contesta de una pieza igualmente,
+  se lee tal cual. Solo se pierde el TTFT, que en ese caso no existía.
+- Si el proveedor no manda `usage` en el stream, los tokens se estiman por longitud en
+  vez de perderse: si no, se quedarían sin descontar de la cuota diaria y sin tok/s.
+
 Guardar prompts y respuestas está activado por defecto —es lo que hace útil el
 historial— pero son datos sensibles que quedan en la base de datos local. Se puede
 apagar con la casilla «Guardar prompts y respuestas», y «Purgar contenido» borra los

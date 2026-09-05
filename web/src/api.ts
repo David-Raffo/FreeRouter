@@ -217,6 +217,12 @@ export const api = {
   activityDetail: (id: number) => request<ActivityDetail>(`/api/activity/${id}`),
   clearActivityContent: () => request<{ ok: boolean }>('/api/activity', { method: 'DELETE' }),
   loggingSettings: () => request<{ logContent: boolean }>('/api/settings/logging'),
+  measurementSettings: () => request<{ measureTtft: boolean }>('/api/settings/measurement'),
+  setMeasurement: (measureTtft: boolean) =>
+    request<{ measureTtft: boolean }>('/api/settings/measurement', {
+      method: 'POST',
+      body: JSON.stringify({ measureTtft }),
+    }),
   setLogging: (logContent: boolean) =>
     request<{ logContent: boolean }>('/api/settings/logging', {
       method: 'POST',

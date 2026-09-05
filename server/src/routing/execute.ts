@@ -23,7 +23,7 @@ import {
 import { recordFailure, recordSuccess } from './health.js';
 import { applySnapshot, penalize, reserve, settle } from './quota.js';
 import type { ScoredCandidate } from './score.js';
-import type { TokenEstimate } from './tokens.js';
+import { estimateCompletionTokens, type TokenEstimate } from './tokens.js';
 
 export interface Attempt {
   providerId: ProviderId;
@@ -78,12 +78,24 @@ export interface ExecuteOptions {
   estimate: TokenEstimate;
   chain: ScoredCandidate[];
   signal?: AbortSignal;
+  /**
+   * Pedir streaming al proveedor aunque el cliente no lo haya pedido.
+   *
+   * El cliente recibe exactamente la misma respuesta de siempre —se reconstruye entera
+   * antes de contestarle—, pero por el camino se puede cronometrar el primer token. Sin
+   * esto, todo el tráfico que no venga en streaming (n8n, por ejemplo) deja al router
+   * sin una de sus dos métricas de velocidad.
+   */
+  measureTtft?: boolean;
 }
 
 export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
   const { body, estimate, chain, signal } = options;
   const attempts: Attempt[] = [];
   const wantsStream = body.stream === true;
+  // Se pide troceado si el cliente lo quiere o si hay que medir el TTFT. En el segundo
+  // caso la respuesta se rearma antes de contestar, así que el cliente no nota nada.
+  const streamUpstream = wantsStream || options.measureTtft === true;
 
   for (const candidate of chain) {
     const model = candidate.model;
@@ -106,7 +118,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     // se cuelan por el mismo hueco.
     reserve(model.providerId, model.id, estimate.total);
 
-    const result = await callChat(provider, secret, { ...body, model: model.id }, { signal });
+    const result = await callChat(provider, secret, { ...body, model: model.id, stream: streamUpstream }, { signal });
     applySnapshot(model.providerId, model.id, result.rateLimit);
 
     if (!result.ok) {
@@ -116,7 +128,14 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       continue;
     }
 
-    if (!wantsStream) {
+    // Un proveedor puede ignorar `stream: true` y contestar de una pieza igualmente. Si
+    // no lo pedía el cliente, no es un problema: se lee como JSON y lo único que se
+    // pierde es el TTFT, que sin trocear no existe. Tratarlo como stream roto sería
+    // descartar una respuesta perfectamente válida.
+    const servedAsStream = (result.response.headers.get('content-type') ?? '').includes('event-stream');
+    const readAsJson = !wantsStream && (!streamUpstream || !servedAsStream);
+
+    if (readAsJson) {
       const finished = await readJson(result.response);
       if (!finished.ok) {
         handleFailure(model, 'server', finished.message, null, estimate);
@@ -135,6 +154,29 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       attempts.push({ providerId: model.providerId, modelId: model.id, errorKind: opened.kind, message: opened.message, ms: since() });
       if (!shouldTryNextCandidate(opened.kind)) return { ok: false, attempts };
       continue;
+    }
+
+    // El cliente no quería streaming: se consume entero y se rearma la respuesta normal.
+    // Lo que se gana es el TTFT, que en una respuesta de una pieza no existe.
+    if (!wantsStream) {
+      const collected = await collectCompletion(opened, model.id);
+      if (!collected.ok) {
+        handleFailure(model, 'server', collected.message, null, estimate);
+        attempts.push({ providerId: model.providerId, modelId: model.id, errorKind: 'server', message: collected.message, ms: since() });
+        continue;
+      }
+      const totalMs = performance.now() - result.startedAt;
+      finalizeAccounting(model, estimate, collected.usage, opened.ttftMs, totalMs);
+      return {
+        ok: true,
+        stream: false,
+        model,
+        payload: collected.payload,
+        ttftMs: opened.ttftMs,
+        totalMs,
+        usage: collected.usage,
+        attempts,
+      };
     }
 
     // A partir de aquí ya no hay vuelta atrás: el cliente va a recibir tokens.
@@ -365,6 +407,98 @@ function embeddedError(data: string): { kind: ErrorKind; message: string } | nul
   } catch {
     return null;
   }
+}
+
+/**
+ * Consume un stream entero y rearma la respuesta de una pieza que espera el cliente.
+ *
+ * Se usa cuando el cliente NO pidió streaming pero queremos el TTFT: se pide troceado al
+ * proveedor, se cronometra el primer token y aquí se vuelve a juntar todo. El cliente
+ * recibe un `chat.completion` indistinguible del que habría recibido de todos modos.
+ */
+async function collectCompletion(
+  opened: OpenedStream,
+  modelId: string,
+): Promise<{ ok: true; payload: Record<string, unknown>; usage: Usage | null } | { ok: false; message: string }> {
+  const parts: string[] = [];
+  const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+  let usage: Usage | null = null;
+  let finishReason = 'stop';
+  let id = `chatcmpl-${Date.now()}`;
+  let servedModel = modelId;
+
+  const absorb = (data: string): void => {
+    if (data === '[DONE]') return;
+    let chunk: Record<string, unknown>;
+    try {
+      chunk = JSON.parse(data) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    if (typeof chunk.id === 'string' && chunk.id.length > 0) id = chunk.id;
+    if (typeof chunk.model === 'string' && chunk.model.length > 0) servedModel = chunk.model;
+    usage = readUsage(chunk) ?? usage;
+
+    const choice = ((chunk.choices as Array<Record<string, unknown>> | undefined) ?? [])[0];
+    if (!choice) return;
+    if (typeof choice.finish_reason === 'string' && choice.finish_reason.length > 0) {
+      finishReason = choice.finish_reason;
+    }
+
+    const delta = (choice.delta ?? {}) as Record<string, unknown>;
+    if (typeof delta.content === 'string') parts.push(delta.content);
+
+    for (const raw of (delta.tool_calls as Array<Record<string, unknown>> | undefined) ?? []) {
+      const index = Number(raw.index ?? 0);
+      const existing = toolCalls.get(index) ?? { id: '', name: '', arguments: '' };
+      const fn = (raw.function ?? {}) as Record<string, unknown>;
+      if (typeof raw.id === 'string' && raw.id.length > 0) existing.id = raw.id;
+      if (typeof fn.name === 'string' && fn.name.length > 0) existing.name = fn.name;
+      if (typeof fn.arguments === 'string') existing.arguments += fn.arguments;
+      toolCalls.set(index, existing);
+    }
+  };
+
+  try {
+    for (const data of opened.buffered) absorb(data);
+    for await (const data of opened.iterator) absorb(data);
+  } catch (err) {
+    return { ok: false, message: `El stream se cortó a medias: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  const text = parts.join('');
+  const calls = [...toolCalls.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, call]) => ({
+      id: call.id.length > 0 ? call.id : `call_${Math.random().toString(36).slice(2)}`,
+      type: 'function',
+      function: { name: call.name, arguments: call.arguments },
+    }));
+
+  if (text.length === 0 && calls.length === 0) {
+    return { ok: false, message: 'El stream terminó sin contenido utilizable' };
+  }
+
+  // Sin `usage` no habría tok/s ni descuento de cuota, así que se estima por longitud.
+  // Es lo mismo que hace la calibración con los proveedores que no lo mandan.
+  const resolved: Usage | null =
+    usage ?? { promptTokens: 0, completionTokens: estimateCompletionTokens(text) };
+
+  const message: Record<string, unknown> = { role: 'assistant', content: text };
+  if (calls.length > 0) message.tool_calls = calls;
+
+  return {
+    ok: true,
+    payload: {
+      id,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: servedModel,
+      choices: [{ index: 0, message, finish_reason: finishReason }],
+      usage: { prompt_tokens: resolved.promptTokens, completion_tokens: resolved.completionTokens },
+    },
+    usage: resolved,
+  };
 }
 
 /** Reenvía los eventos ya consumidos y luego el resto, contabilizando el uso real. */

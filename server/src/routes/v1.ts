@@ -40,6 +40,18 @@ function contentLoggingEnabled(): boolean {
   return getSetting('log_content') !== 'false';
 }
 
+/**
+ * ¿Se pide streaming a los proveedores aunque el cliente no lo pida?
+ *
+ * Activado por defecto. El cliente recibe la misma respuesta de una pieza —se rearma
+ * antes de contestarle— y a cambio se puede cronometrar el primer token, que es una de
+ * las dos métricas con las que el router decide. Sin esto, un cliente que no use
+ * streaming (n8n, sin ir más lejos) no aporta ni un dato de TTFT por mucho que lo use.
+ */
+function measureTtftEnabled(): boolean {
+  return getSetting('measure_ttft') !== 'false';
+}
+
 /** Renderiza los mensajes de la petición como texto plano legible. */
 function renderPrompt(body: Record<string, unknown>): string | null {
   if (!contentLoggingEnabled()) return null;
@@ -256,6 +268,7 @@ async function serve(
     estimate,
     chain: routed.chain,
     signal: clientAbortSignal(reply),
+    measureTtft: measureTtftEnabled(),
   });
 
   /**

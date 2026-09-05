@@ -91,6 +91,17 @@ function charsToTokens(chars: number): number {
   return Math.ceil(chars / CHARS_PER_TOKEN);
 }
 
+/**
+ * Tokens de una respuesta cuando el proveedor no manda `usage`.
+ *
+ * Es una estimación por longitud, con el mismo ratio que se usa para la petición. No es
+ * exacta, pero la alternativa es no contar nada: sin esto, un proveedor que calla su
+ * consumo dejaría al router sin tok/s y a la cuota diaria sin descontar.
+ */
+export function estimateCompletionTokens(text: string): number {
+  return charsToTokens(text.length);
+}
+
 /** ¿La petición pide tool use? */
 export function requestUsesTools(body: Record<string, unknown>): boolean {
   return Array.isArray(body.tools) && body.tools.length > 0;

@@ -14,11 +14,16 @@ export function Activity({ rows }: { rows: ActivityRow[] }) {
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [logContent, setLogContent] = useState(true);
+  const [measureTtft, setMeasureTtft] = useState(true);
 
   useEffect(() => {
     api
       .loggingSettings()
       .then((settings) => setLogContent(settings.logContent))
+      .catch(() => undefined);
+    api
+      .measurementSettings()
+      .then((settings) => setMeasureTtft(settings.measureTtft))
       .catch(() => undefined);
   }, []);
 
@@ -46,8 +51,26 @@ export function Activity({ rows }: { rows: ActivityRow[] }) {
   return (
     <div className="stack">
       <div className="row spread wrap">
-        <span className="dim">Se conservan las últimas 500 peticiones. Pincha una fila para ver el contenido.</span>
+        <span className="dim">
+          Se conservan las últimas 500 peticiones. Pincha una fila para ver la cronología y el contenido.
+        </span>
         <div className="row">
+          <label
+            className={`check ${measureTtft ? 'on' : ''}`}
+            title="Pide streaming a los proveedores aunque tu cliente no lo pida, para poder cronometrar el primer token. La respuesta que recibes es la misma."
+          >
+            <input
+              type="checkbox"
+              checked={measureTtft}
+              onChange={(event) => {
+                const next = event.target.checked;
+                setMeasureTtft(next);
+                void api.setMeasurement(next);
+              }}
+              style={{ display: 'none' }}
+            />
+            Medir TTFT siempre
+          </label>
           <label className={`check ${logContent ? 'on' : ''}`} title="Prompts y respuestas quedan guardados en la base de datos local">
             <input
               type="checkbox"
@@ -133,7 +156,13 @@ function RowPair({
         <td>{row.api_key_name ?? <span className="dim">—</span>}</td>
         <td>{row.profile ?? '—'}</td>
         <td className="mono">{row.model_id ? `${row.provider_id}/${row.model_id}` : '—'}</td>
-        <td title={row.ttft_ms === null ? 'Respuesta sin trocear: no hay primer token que cronometrar' : undefined}>
+        <td
+          title={
+            row.ttft_ms === null
+              ? 'Sin dato: la respuesta llegó de una pieza. Actívalo con «Medir TTFT siempre».'
+              : undefined
+          }
+        >
           {row.ttft_ms === null ? <span className="dim">—</span> : `${Math.round(row.ttft_ms)} ms`}
         </td>
         <td>{row.total_ms === null ? <span className="dim">—</span> : duration(row.total_ms)}</td>

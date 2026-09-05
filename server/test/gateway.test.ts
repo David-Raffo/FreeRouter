@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import type { FastifyInstance } from 'fastify';
-import { closeDb, useInMemoryDb } from '../src/db.js';
+import { closeDb, setSetting, useInMemoryDb } from '../src/db.js';
 import { resetQuotaState } from '../src/routing/quota.js';
 import {
   createApiKey,
@@ -275,6 +275,78 @@ describe('gateway', () => {
     // varios segundos que además contaminaba la media con la que decide el router.
     assert.equal(bueno?.ttftMs, null, 'una respuesta no troceada no tiene TTFT');
     assert.ok((bueno?.ms ?? -1) >= 0, 'el tiempo total sí se guarda');
+  });
+
+  it('mide el TTFT pidiendo streaming aunque el cliente no lo pida', async () => {
+    // El cliente manda una petición normal y recibe una respuesta normal; por dentro se
+    // pide troceada para poder cronometrar el primer token. Sin esto, un cliente que no
+    // use streaming (n8n) no aporta ni un dato de TTFT.
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    responders.groq = (body) => {
+      assert.equal(body.stream, true, 'al proveedor se le pide troceado');
+      return sse([chunk('ho', String(body.model)), chunk('la', String(body.model)), '[DONE]']);
+    };
+
+    const response = await chat(app, seedKey('calidad'));
+
+    assert.equal(response.statusCode, 200);
+    const payload = response.json();
+    assert.equal(payload.object, 'chat.completion', 'al cliente le llega una respuesta de una pieza');
+    assert.equal(payload.choices[0].message.content, 'hola', 'rearmada entera');
+    assert.equal(payload.choices[0].finish_reason, 'stop');
+    assert.ok(!response.headers['content-type']?.includes('event-stream'));
+
+    const detail = requestDetail(Number(recentRequests(1)[0]?.id));
+    const bueno = detail?.timeline.find((attempt) => attempt.ok);
+    assert.ok((bueno?.ttftMs ?? -1) >= 0, 'y ahora sí hay TTFT');
+  });
+
+  it('con la medición apagada, la petición va de una pieza como antes', async () => {
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    setSetting('measure_ttft', 'false');
+    responders.groq = (body) => {
+      assert.notEqual(body.stream, true, 'no se pide troceado si no hace falta');
+      return jsonOk(body);
+    };
+
+    const response = await chat(app, seedKey('calidad'));
+
+    assert.equal(response.statusCode, 200);
+    const detail = requestDetail(Number(recentRequests(1)[0]?.id));
+    assert.equal(detail?.timeline.find((a) => a.ok)?.ttftMs, null, 'sin medir, no hay TTFT que inventar');
+  });
+
+  it('rearmando la respuesta no se pierden las llamadas a herramientas', async () => {
+    // Los argumentos llegan troceados por índice: si el rearmado no los junta, el
+    // cliente recibe una llamada con el JSON partido por la mitad.
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    responders.groq = () =>
+      sse([
+        JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'clima', arguments: '{"ciudad"' } }] } }] }),
+        JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: ':"Madrid"}' } }] } }] }),
+        JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),
+        '[DONE]',
+      ]);
+
+    const response = await chat(app, seedKey('calidad'));
+
+    assert.equal(response.statusCode, 200);
+    const call = response.json().choices[0].message.tool_calls[0];
+    assert.equal(call.function.name, 'clima');
+    assert.equal(call.function.arguments, '{"ciudad":"Madrid"}');
+    assert.equal(response.json().choices[0].finish_reason, 'tool_calls');
+  });
+
+  it('si el proveedor calla su consumo, los tokens se estiman en vez de perderse', async () => {
+    // Sin `usage` no habría tok/s ni descuento de cuota diaria.
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    responders.groq = (body) => sse([chunk('palabra '.repeat(40), String(body.model)), '[DONE]']);
+
+    await chat(app, seedKey('calidad'));
+
+    const [row] = recentRequests(1);
+    assert.ok(Number(row?.tokens_out) > 0, 'se estima por longitud');
+    assert.ok(Number(row?.tps) > 0, 'y así sigue habiendo tok/s');
   });
 
   it('en streaming sí se guarda el TTFT, que ahí sí existe', async () => {
