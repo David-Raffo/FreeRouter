@@ -624,12 +624,32 @@ un proveedor se llena, **espera** al hueco en vez de saltarse el modelo. Para re
 todo desde cero: `POST /api/warmup?force=true`.
 
 **Paralelismo.** Cada proveedor es una API distinta con su propia cuota, así que se
-miden en paralelo; dentro de un mismo proveedor se va casi en serie, porque ahí sí
-comparten el cubo por minuto. Hay un tope global de 6 mediciones simultáneas, y no es
-arbitrario: varios streams compitiendo por el mismo ancho de banda y el mismo bucle de
-eventos hacen que el ritmo salga más bajo del real. Con seis a la vez el sesgo es
-despreciable —cada stream son unos pocos KB/s— y el tiempo baja de minutos a decenas de
-segundos.
+miden en paralelo. Hay un tope global de 6 mediciones simultáneas, y no es arbitrario:
+varios streams compitiendo por el mismo ancho de banda y el mismo bucle de eventos hacen
+que el ritmo salga más bajo del real. Con seis a la vez el sesgo es despreciable —cada
+stream son unos pocos KB/s—.
+
+Ese tope global es el único: un proveedor puede usar las seis ranuras si los demás ya han
+terminado. Limitarlo además a dos por proveedor no protegía nada —las cuotas ya se
+reservan antes de cada sondeo— y convertía al proveedor con más modelos en el cuello de
+botella de todo: en una instalación nueva, NVIDIA trae 68 modelos y tardaba 393 s
+mientras el resto acababa en 90 s y cuatro ranuras se quedaban libres.
+
+**Plazo para el primer token.** Aparte del tope total de 2 minutos hay uno de 25 s para
+que el modelo *arranque*. Un modelo que no emite nada en ese tiempo no va a elegirse
+jamás —la puntuación de velocidad ya da cero a partir de 10 s de TTFT—, así que esperarle
+dos minutos solo servía para apuntar lo que ya se sabía: cuatro modelos muertos de NVIDIA
+se comían 480 s de los 786 s del proveedor. En cuanto llega el primer token el plazo se
+cancela y manda el tope total, para no cortar a un modelo lento pero sano mientras
+escribe.
+
+**Orden.** Dentro de cada proveedor se miden primero los de más calidad. La calibración
+de un catálogo grande dura minutos y durante ese rato el router decide con medianas; que
+los candidatos que de verdad va a elegir tengan su medida en los primeros segundos
+importa más que el orden del resto de la cola.
+
+Las tres cosas juntas dejan una instalación nueva de 136 modelos en unos 2 minutos, frente
+a los casi 7 de antes.
 
 Un detalle que costó encontrar: hay proveedores que mandan la respuesta entera en un
 único evento SSE. Midiendo hasta el último evento con contenido, el intervalo de

@@ -38,7 +38,7 @@ interface Call {
 }
 
 /** Respuesta que devolverá el doble para un proveedor concreto. */
-type Responder = (body: Record<string, unknown>) => Response;
+type Responder = (body: Record<string, unknown>, signal?: AbortSignal | null) => Response;
 
 const calls: Call[] = [];
 let responders: Partial<Record<ProviderId, Responder>> = {};
@@ -82,7 +82,10 @@ function installFetchStub(): void {
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     calls.push({ providerId, model: String(body.model), at: Date.now() });
     const responder = responders[providerId] ?? jsonOk;
-    return responder(body);
+    // La señal se le pasa al doble igual que `fetch` se la aplica al cuerpo de la
+    // respuesta: un stream que ignora el aborto no se parece a la realidad y deja pasar
+    // fallos que solo aparecen con tráfico de verdad.
+    return responder(body, init?.signal ?? null);
   }) as typeof fetch;
 }
 
@@ -616,6 +619,62 @@ describe('gateway', () => {
     const models = listModels(false);
     assert.equal(models.find((m) => m.id === 'vetado')?.enabled, false, 'solo se desactiva el modelo vetado');
     assert.equal(models.find((m) => m.id === 'bueno')?.enabled, true);
+  });
+
+  it('se rinde con un modelo que no arranca, sin esperar el tope entero', async () => {
+    // Cuatro modelos muertos de NVIDIA se comían 480 s de los 786 s del proveedor
+    // esperando dos minutos cada uno. Y para nada: la puntuación de velocidad ya da cero
+    // a partir de 10 s de TTFT, así que ninguno de ellos se iba a elegir jamás.
+    seedProvider('groq', 'no-arranca', 50, 30);
+    responders.groq = (_body, signal) =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            // Nunca emite nada: el proveedor acepta y se queda callado. Al abortar, el
+            // cuerpo revienta, que es lo que hace `fetch` de verdad.
+            signal?.addEventListener('abort', () => controller.error(new Error('aborted')));
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+
+    const target = listModels().find((m) => m.id === 'no-arranca')!;
+    const empezado = Date.now();
+    const measurement = await measureModel(target, { firstTokenMs: 120 });
+    const tardado = Date.now() - empezado;
+
+    assert.ok('error' in measurement, 'debe fallar, no colgarse');
+    assert.equal(measurement.kind, 'timeout');
+    assert.ok(tardado < 2000, `debe cortar al plazo del primer token, tardó ${tardado} ms`);
+  });
+
+  it('el plazo del primer token no corta a un modelo lento pero sano', async () => {
+    // En cuanto el modelo arranca, el reloj corto se cancela: escribir despacio es
+    // legítimo y retirarlo por eso sería perder un modelo que en producción funciona.
+    seedProvider('groq', 'lento-pero-vivo', 50, 30);
+    responders.groq = (_body, signal) => {
+      const encoder = new TextEncoder();
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          async start(controller) {
+            signal?.addEventListener('abort', () => controller.error(new Error('aborted')));
+            controller.enqueue(encoder.encode(`data: ${chunk('arranco ', 'lento-pero-vivo')}\n\n`));
+            // Más tiempo del que dura el plazo del primer token, ya consumido.
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            controller.enqueue(encoder.encode(`data: ${chunk('palabra '.repeat(40), 'lento-pero-vivo')}\n\n`));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    };
+
+    const target = listModels().find((m) => m.id === 'lento-pero-vivo')!;
+    const measurement = await measureModel(target, { firstTokenMs: 120 });
+
+    assert.ok(!('error' in measurement), `no debía cortarse: ${JSON.stringify(measurement)}`);
+    assert.ok(measurement.ttftMs > 0);
   });
 
   it('mide tok/s aunque el proveedor mande toda la respuesta en un solo chunk', async () => {

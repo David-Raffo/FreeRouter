@@ -44,12 +44,24 @@ const MIN_DAILY_HEADROOM = 0.2;
 /** Techo de generación del sondeo. */
 const PROBE_MAX_TOKENS = 200;
 /**
- * Tope de tiempo del sondeo. Igual al de una petición real a propósito: con un tope más
- * corto la calibración descarta modelos que en producción funcionarían, y la válvula de
- * fallos consecutivos acababa retirándolos. Un modelo grande servido gratis puede tardar
- * de verdad más de un minuto en escribir 200 tokens.
+ * Tope total del sondeo. Generoso a propósito: un modelo grande servido gratis puede
+ * tardar de verdad más de un minuto en escribir 200 tokens, y descartarlo por lento
+ * sería retirar algo que en producción funciona.
  */
 const PROBE_TIMEOUT_MS = 120_000;
+
+/**
+ * Plazo para el PRIMER token, aparte del tope total.
+ *
+ * Un modelo que ni siquiera arranca en este tiempo no va a ser elegido jamás: la
+ * puntuación de velocidad ya da cero a partir de 10 s de TTFT. Esperarle dos minutos
+ * para acabar apuntando lo que ya se sabía es lo que hacía eterna la calibración
+ * inicial: cuatro modelos muertos de NVIDIA se comían 480 s de los 786 s del proveedor.
+ *
+ * En cuanto llega el primer token este plazo se cancela y manda el tope total, para no
+ * cortar a un modelo lento pero sano mientras escribe.
+ */
+const PROBE_FIRST_TOKEN_MS = 25_000;
 /** Coste estimado de un sondeo, para reservar cuota antes de lanzarlo. */
 const PROBE_TOKENS = PROBE_MAX_TOKENS + 40;
 /** Pausa entre mediciones consecutivas de un mismo proveedor. */
@@ -65,8 +77,19 @@ const MAX_QUOTA_WAIT_MS = 75_000;
  * KB/s— y la calibración baja de minutos a decenas de segundos.
  */
 const MAX_CONCURRENT_PROBES = 6;
-/** Mediciones simultáneas dentro de un mismo proveedor. */
-const MAX_PER_PROVIDER = 2;
+/**
+ * Mediciones simultáneas dentro de un mismo proveedor.
+ *
+ * Igual al tope global: el semáforo global sigue mandando, así que subirlo no aumenta
+ * cuántos streams compiten a la vez ni estropea las medidas. Lo único que cambia es que
+ * un proveedor con muchos modelos puede aprovechar los huecos que dejan los demás al
+ * terminar, en vez de ir de dos en dos mientras cuatro ranuras se quedan libres. En una
+ * instalación nueva NVIDIA trae 68 modelos y era el cuello de botella de toda la
+ * calibración: el resto acababa en 90 s y él tardaba 393 s.
+ *
+ * Las cuotas siguen protegidas: cada sondeo reserva antes de llamar y espera su hueco.
+ */
+const MAX_PER_PROVIDER = MAX_CONCURRENT_PROBES;
 
 /**
  * Prompt de calibración. Ni corto ni largo a propósito: pide bastante texto como para
@@ -119,12 +142,27 @@ export interface MeasurementDetail {
  * rol), y el ritmo se calcula sobre el tiempo restante: mezclarlos daría una cifra que
  * no es ni una cosa ni la otra.
  */
-export async function measureModel(model: StoredModel): Promise<Measurement | { error: string; kind: string }> {
+export async function measureModel(
+  model: StoredModel,
+  options: { firstTokenMs?: number } = {},
+): Promise<Measurement | { error: string; kind: string }> {
+  const firstTokenDeadline = options.firstTokenMs ?? PROBE_FIRST_TOKEN_MS;
   const provider = getProvider(model.providerId);
   const secret = provider ? getProviderKeySecret(model.providerId) : null;
   if (!provider || secret === null) return { error: 'Sin clave activa', kind: 'auth' };
 
   reserve(model.providerId, model.id, PROBE_TOKENS);
+
+  // Dos relojes: uno corto para el primer token y el tope total para el resto. El corto
+  // se cancela en cuanto el modelo arranca.
+  const firstToken = new AbortController();
+  let firstTokenTimer: NodeJS.Timeout | null = setTimeout(() => firstToken.abort(), firstTokenDeadline);
+  const stopFirstTokenClock = (): void => {
+    if (firstTokenTimer) {
+      clearTimeout(firstTokenTimer);
+      firstTokenTimer = null;
+    }
+  };
 
   const result = await callChat(
     provider,
@@ -136,10 +174,14 @@ export async function measureModel(model: StoredModel): Promise<Measurement | { 
       temperature: 0,
       stream: true,
     },
-    { timeoutMs: PROBE_TIMEOUT_MS },
+    { timeoutMs: PROBE_TIMEOUT_MS, signal: firstToken.signal },
   );
 
   if (!result.ok) {
+    stopFirstTokenClock();
+    if (firstToken.signal.aborted) {
+      return { error: `Sin el primer token tras ${firstTokenDeadline / 1000} s`, kind: 'timeout' };
+    }
     return { error: result.message, kind: result.kind };
   }
 
@@ -156,8 +198,10 @@ export async function measureModel(model: StoredModel): Promise<Measurement | { 
       if (data === '[DONE]') continue;
       if (sseHasContent(data)) {
         const now = performance.now();
-        if (firstTokenAt === null) firstTokenAt = now;
-        else gaps.push(now - previousAt!);
+        if (firstTokenAt === null) {
+          firstTokenAt = now;
+          stopFirstTokenClock();
+        } else gaps.push(now - previousAt!);
         previousAt = now;
         chunks += 1;
         chars += contentLength(data);
@@ -168,7 +212,13 @@ export async function measureModel(model: StoredModel): Promise<Measurement | { 
       if (seconds !== null) providerSeconds = seconds;
     }
   } catch (err) {
+    stopFirstTokenClock();
+    if (firstTokenAt === null && firstToken.signal.aborted) {
+      return { error: `Sin el primer token tras ${firstTokenDeadline / 1000} s`, kind: 'timeout' };
+    }
     return { error: err instanceof Error ? err.message : String(err), kind: 'network' };
+  } finally {
+    stopFirstTokenClock();
   }
 
   if (firstTokenAt === null) {
@@ -357,6 +407,14 @@ async function runWarmup(options: { force?: boolean }): Promise<WarmupResult> {
     const list = byProvider.get(model.providerId) ?? [];
     list.push(model);
     byProvider.set(model.providerId, list);
+  }
+
+  // Dentro de cada proveedor, primero los de más calidad. La calibración completa de un
+  // catálogo grande dura minutos, y durante ese rato el router decide con medianas; que
+  // los candidatos que de verdad va a elegir tengan su medida en los primeros segundos
+  // importa mucho más que el orden del resto de la cola.
+  for (const list of byProvider.values()) {
+    list.sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0));
   }
 
   const globalSlots = new Semaphore(MAX_CONCURRENT_PROBES);
