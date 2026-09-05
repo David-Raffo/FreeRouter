@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "note": "Capacidades por familia de modelo para los proveedores que NO las exponen en su API (Groq y Cerebras). OpenRouter no aparece aquí porque su /api/v1/models ya devuelve input_modalities, output_modalities y supported_parameters. Las reglas se evalúan en orden y gana la primera que casa (`match` es una regex sobre el id del modelo, sin distinguir mayúsculas). `context` solo se usa cuando el proveedor no informa del tamaño de ventana; además el router lo corrige solo a la baja si el modelo devuelve un error de contexto excedido. `_default` se aplica a los proveedores que no tienen entrada propia; asume tool use porque casi todas las APIs compatibles con OpenAI lo soportan hoy, y modalidad de imagen para las familias que se reconocen por el nombre."
+  },
+  "_exclude": {
+    "note": "Modelos que aparecen en el catálogo de los proveedores pero no sirven para /chat/completions: transcripción, síntesis de voz, generación de audio, clasificadores de seguridad, embeddings (BGE, GTE, E5, Jina, Nomic…) reranking y detectores/clasificadores. Se excluyen para TODOS los proveedores, OpenRouter incluido, porque enrutarles un chat es un error garantizado.",
+    "patterns": [
+      "whisper|speech-to-text|-stt-",
+      "tts|playai|orpheus|lyria|suno|musicgen|-audio-gen",
+      "guard|content-safety|moderation|shieldgemma",
+      "embed|rerank|^bge-|-bge-|^gte-|^e5-|multilingual-e5|nomic-embed|jina-",
+      "stable-diffusion|flux|imagen|dall-e|sdxl",
+      "detector|classifier|-clasificador|safety-check|nsfw"
+    ]
+  },
+  "groq": {
+    "rules": [
+      {
+        "match": "llama-4|scout|maverick",
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "tools": true
+      },
+      {
+        "match": "llava|vision",
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "tools": false
+      }
+    ],
+    "default": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ],
+      "tools": true,
+      "chat": true,
+      "context": 8192
+    }
+  },
+  "cerebras": {
+    "rules": [],
+    "default": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ],
+      "tools": true,
+      "chat": true,
+      "context": 32768
+    }
+  },
+  "_default": {
+    "rules": [
+      {
+        "match": "llama-4|scout|maverick|gemini|gemma-?[34]|qwen.*vl|vision|llava|-vl-",
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ],
+        "tools": true
+      }
+    ],
+    "default": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ],
+      "tools": true,
+      "chat": true,
+      "context": 32768
+    }
+  }
+}

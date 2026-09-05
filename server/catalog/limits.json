@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "note": "Límites del tier gratuito conocidos a fecha de creación. Son solo la SEMILLA: en runtime se auto-corrigen con las cabeceras x-ratelimit-* (Groq) y con GET /api/v1/key (OpenRouter). Edita este fichero si tu cuenta tiene límites distintos.",
+    "verifiedOn": "2026-09-04"
+  },
+  "groq": {
+    "source": "https://console.groq.com/docs/rate-limits",
+    "default": { "rpm": 30, "tpm": 8000, "rpd": 1000, "tpd": 200000 },
+    "models": {}
+  },
+  "cerebras": {
+    "source": "https://inference-docs.cerebras.ai/support/rate-limits",
+    "default": { "rpm": 5, "tpm": 30000, "rpd": null, "tpd": 1000000 },
+    "models": {}
+  },
+  "openrouter": {
+    "source": "https://openrouter.ai/docs/api-reference/limits",
+    "note": "50 req/día si la cuenta nunca acumuló 10$ de crédito de por vida, 1000 si sí. Se detecta con GET /api/v1/key al validar la clave. Los fallos TAMBIÉN consumen cuota diaria.",
+    "default": { "rpm": 20, "tpm": null, "rpd": 50, "tpd": null },
+    "models": {}
+  }
+}

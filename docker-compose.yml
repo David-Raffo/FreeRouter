@@ -1,0 +1,88 @@
+services:
+  freerouter:
+    build: .
+    image: freerouter:latest
+    container_name: freerouter
+    restart: unless-stopped
+    ports:
+      # Un solo puerto: panel y API. Se puede publicar porque ambos van autenticados —
+      # el panel con FREEROUTER_PASSWORD y /v1 con tus API keys.
+      #
+      # Con los perfiles `https` o `tunnel` esto sobra: quien atiende desde fuera es el
+      # proxy, y conviene dejarlo en "127.0.0.1:8787:8787" para que nadie pueda saltarse
+      # el HTTPS yendo al puerto directo.
+      - "${FREEROUTER_BIND:-0.0.0.0}:8787:8787"
+
+    volumes:
+      # Aquí viven la base de datos, la clave maestra y las claves cifradas.
+      - freerouter-data:/data
+      # El catálogo se monta desde el repo para poder editar los límites sin
+      # reconstruir la imagen. Quita esta línea si prefieres congelarlo.
+      - ./server/catalog:/app/server/catalog
+    environment:
+      # Obligatoria. Con la sintaxis `:?`, `docker compose up` se niega a arrancar y
+      # explica qué falta, en vez de levantar un panel sin proteger.
+      FREEROUTER_PASSWORD: ${FREEROUTER_PASSWORD:?falta FREEROUTER_PASSWORD. Crea un .env junto a este fichero con FREEROUTER_PASSWORD=la-que-quieras (o FREEROUTER_DISABLE_AUTH=true si solo lo usas en local)}
+      FREEROUTER_DISABLE_AUTH: ${FREEROUTER_DISABLE_AUTH:-}
+      # Dentro del contenedor hay que escuchar en todas las interfaces; quien
+      # restringe el acceso es el mapeo de puertos de arriba.
+      FREEROUTER_HOST: 0.0.0.0
+      FREEROUTER_HOME: /data
+      # Opcional: activa el Intelligence Index real en vez de las heurísticas.
+      ARTIFICIAL_ANALYSIS_API_KEY: ${ARTIFICIAL_ANALYSIS_API_KEY:-}
+      # Opcional: cifra la clave maestra a partir de una passphrase.
+      FREEROUTER_PASSPHRASE: ${FREEROUTER_PASSPHRASE:-}
+      # Marca la cookie de sesión como segura. Actívalo si pones HTTPS delante.
+      FREEROUTER_HTTPS: ${FREEROUTER_HTTPS:-}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # ── Perfil `https`: para un servidor con IP pública y un dominio apuntándole ──────
+  # Caddy pide y renueva el certificado de Let's Encrypt solo. Es la opción con menos
+  # piezas y sin depender de nadie más que de tu dominio.
+  #
+  #   docker compose --profile https up -d
+  caddy:
+    image: caddy:2-alpine
+    container_name: freerouter-caddy
+    profiles: [https]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      # Sin `:?` a propósito: Compose interpola TODO el fichero aunque el perfil no esté
+      # activo, así que exigirla aquí rompería el arranque normal de quien no use HTTPS.
+      # Si falta, Caddy falla nombrando la variable en su propio error.
+      FREEROUTER_DOMAIN: ${FREEROUTER_DOMAIN:-falta-FREEROUTER_DOMAIN-en-tu-.env}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    depends_on:
+      - freerouter
+
+  # ── Perfil `tunnel`: para cuando NO hay IP pública ni puertos que abrir ───────────
+  # Un servidor en casa, detrás de CGNAT o de un router que no controlas. El túnel sale
+  # de dentro hacia fuera, así que no hay nada que abrir. Necesita cuenta de Cloudflare.
+  #
+  #   docker compose --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: freerouter-tunnel
+    profiles: [tunnel]
+    restart: unless-stopped
+    # Igual que arriba: la variable no puede ser obligatoria a nivel de fichero.
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-falta-CLOUDFLARE_TUNNEL_TOKEN-en-tu-.env}
+    depends_on:
+      - freerouter
+
+volumes:
+  freerouter-data:
+  caddy-data:
+  caddy-config:

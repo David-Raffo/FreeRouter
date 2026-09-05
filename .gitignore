@@ -1,0 +1,14 @@
+# Dependencias y compilados
+node_modules/
+dist/
+*.log
+
+# Secretos y datos locales. `.env` lleva la contraseña del panel y las claves opcionales;
+# `data/` lleva la base de datos, la clave maestra y las claves de proveedor cifradas.
+.env
+data/
+
+# Configuración local de herramientas
+.claude/
+.DS_Store
+*.tsbuildinfo

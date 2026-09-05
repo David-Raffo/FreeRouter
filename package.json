@@ -1,0 +1,35 @@
+{
+  "name": "freerouter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Enrutador inteligente de inferencia gratuita",
+  "license": "MIT",
+  "author": "David Raffo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/David-Raffo/FreeRouter.git"
+  },
+  "keywords": [
+    "llm",
+    "router",
+    "openai-compatible",
+    "groq",
+    "cerebras",
+    "openrouter",
+    "free-inference",
+    "rate-limit"
+  ],
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=server",
+    "build": "npm run build --workspace=web && npm run build --workspace=server",
+    "start": "npm run start --workspace=server",
+    "test": "npm run test --workspace=server"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,41 @@
+# Proxy inverso con HTTPS automático para FreeRouter.
+#
+# Caddy pide y renueva el certificado de Let's Encrypt solo, con lo que la cookie de
+# sesión y tus API keys dejan de viajar en claro. Sin esto no tiene sentido publicar el
+# panel en internet: cualquiera en el camino vería la contraseña.
+#
+# El dominio y el correo salen del .env (FREEROUTER_DOMAIN y ACME_EMAIL).
+
+{
+	# Let's Encrypt avisa aquí si un certificado va a caducar sin renovarse.
+	email {$ACME_EMAIL}
+}
+
+{$FREEROUTER_DOMAIN} {
+	# FreeRouter no publica puertos al exterior: solo Caddy llega a él, por la red
+	# interna de Docker. Es lo que impide saltarse el HTTPS yendo al puerto directo.
+	reverse_proxy freerouter:8787
+
+	encode zstd gzip
+
+	header {
+		# Fuerza HTTPS en visitas posteriores, incluso si alguien teclea http://
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# El streaming de /v1 llega token a token: sin esto el proxy podría acumular la
+	# respuesta y el cliente la recibiría de golpe al final.
+	@stream path /v1/*
+	reverse_proxy @stream freerouter:8787 {
+		flush_interval -1
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
