@@ -22,7 +22,7 @@ import {
   type StoredModel,
 } from '../store.js';
 import { recordFailure, recordSuccess } from './health.js';
-import { applySnapshot, penalize, reserve, settle } from './quota.js';
+import { applySnapshot, clearRateLimitStreak, penalize, reserve, settle } from './quota.js';
 import type { ScoredCandidate } from './score.js';
 import { estimateCompletionTokens, type TokenEstimate } from './tokens.js';
 
@@ -381,6 +381,7 @@ function finalizeAccounting(
 ): void {
   const actualTokens = usage ? usage.promptTokens + usage.completionTokens : estimate.total;
   settle(model.providerId, model.id, estimate.total, actualTokens);
+  clearRateLimitStreak(model.providerId, model.id);
   recordSuccess(model.providerId, model.id, ttftMs, computeTps(usage, ttftMs, totalMs));
 }
 

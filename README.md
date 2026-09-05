@@ -252,6 +252,30 @@ que el 429 se evita antes de provocarlo en vez de reaccionar a él.
 | Cerebras   | 5 req/min · 30K tok/min · 1M tok/día    | por modelo | contadores locales           |
 | OpenRouter | 20 req/min · 50 o 1.000 req/día         | por cuenta | `GET /api/v1/key` al validar |
 
+### Cuando el 429 llega de todos modos
+
+El modelo se aparta con un castigo que **crece al repetirse**: un minuto el primero, y el
+doble cada vez que vuelve y se lo encuentra otra vez, hasta un tope de seis horas. Una
+petición que sale bien lo devuelve al mínimo.
+
+Un castigo fijo no sirve, porque el 429 tapa dos situaciones distintas y no dice cuál es:
+
+- Un pico momentáneo. Los modelos `:free` de OpenRouter van por proveedores compartidos y
+  a la hora punta devuelven 429 con el mensaje «Provider returned error» —que no es la
+  cuota de OpenRouter, es el de detrás saturado—. En un minuto vuelven.
+- Un cubo agotado de verdad, que va a seguir agotado un buen rato.
+
+Con un castigo corto, el segundo caso se reintenta sin parar. Y reintentar no es gratis:
+medido sobre tráfico real, un fallo de Groq cuesta 76 ms de mediana pero uno de
+OpenRouter 532 ms, siete veces más — y en OpenRouter además gasta una de las 50
+peticiones diarias, porque allí **las fallidas también cuentan**. Con un castigo largo,
+en cambio, un pico de un minuto te deja sin tu mejor modelo durante horas. Doblar empieza
+barato y se pone caro solo con quien demuestra estarlo.
+
+Dos límites al castigo: si el proveedor manda `retry-after`, sabe más que nosotros y
+manda su cifra; y nunca se aparta un modelo más allá del reinicio diario, porque pasada
+esa hora la cuota vuelve sola.
+
 ### Proveedores
 
 El catálogo vive en `server/catalog/providers.json`. Como todos exponen una API

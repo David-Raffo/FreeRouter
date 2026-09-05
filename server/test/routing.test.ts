@@ -7,7 +7,16 @@ import assert from 'node:assert/strict';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import { closeDb, useInMemoryDb } from '../src/db.js';
 import { PROFILE_WEIGHTS, scoreCandidates, type Candidate } from '../src/routing/score.js';
-import { checkQuota, reserve, resetQuotaState, settle } from '../src/routing/quota.js';
+import {
+  checkQuota,
+  clearRateLimitStreak,
+  penalize,
+  quotaStatus,
+  reserve,
+  msUntilUtcMidnight,
+  resetQuotaState,
+  settle,
+} from '../src/routing/quota.js';
 import { computeTps } from '../src/routing/execute.js';
 import { explainNoCandidates, requiredCapabilities, route } from '../src/routing/select.js';
 import { estimateTokens, requestUsesTools } from '../src/routing/tokens.js';
@@ -290,6 +299,62 @@ describe('cuota', () => {
     settle('cerebras', 'm', 900, 100);
     // Tras corregir a 100 tokens vuelve a caber una petición de 800.
     assert.equal(checkQuota('cerebras', 'm', 800).ok, true);
+  });
+});
+
+describe('castigo tras un 429', () => {
+  const MINUTO = 60_000;
+
+  it('el primero cuesta un minuto', () => {
+    resetQuotaState();
+    penalize('openrouter', 'm', null);
+    const espera = quotaStatus('openrouter', 'm').cooldownMs;
+    assert.ok(espera > MINUTO * 0.9 && espera <= MINUTO, `esperaba ~1 min, fue ${espera}`);
+  });
+
+  it('si se repite, se dobla', () => {
+    // Un castigo fijo no vale para los dos casos: con uno corto, un modelo agotado de
+    // verdad se reintenta sin parar —y en OpenRouter cada intento gasta una de las 50
+    // peticiones diarias, porque las fallidas también cuentan.
+    resetQuotaState();
+    const esperas: number[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      penalize('openrouter', 'm', null);
+      esperas.push(quotaStatus('openrouter', 'm').cooldownMs);
+    }
+    assert.ok(esperas[1]! > esperas[0]! * 1.8, '1 → 2 minutos');
+    assert.ok(esperas[2]! > esperas[1]! * 1.8, '2 → 4 minutos');
+    assert.ok(esperas[3]! > esperas[2]! * 1.8, '4 → 8 minutos');
+  });
+
+  it('una petición que sale bien devuelve el castigo al mínimo', () => {
+    // El modelo ha demostrado que vuelve a servir: no puede seguir arrastrando la racha.
+    resetQuotaState();
+    penalize('openrouter', 'm', null);
+    penalize('openrouter', 'm', null);
+    penalize('openrouter', 'm', null);
+
+    clearRateLimitStreak('openrouter', 'm');
+    penalize('openrouter', 'm', null);
+
+    const espera = quotaStatus('openrouter', 'm').cooldownMs;
+    assert.ok(espera <= MINUTO, `tras recuperarse debe volver a costar un minuto, fue ${espera}`);
+  });
+
+  it('si el proveedor dice cuándo volver, manda su cifra', () => {
+    resetQuotaState();
+    penalize('groq', 'm', 30_000);
+    const espera = quotaStatus('groq', 'm').cooldownMs;
+    assert.ok(espera > 25_000 && espera <= 30_000, `esperaba los 30 s que pidió, fue ${espera}`);
+  });
+
+  it('nunca se castiga más allá del reinicio diario', () => {
+    // Pasada esa hora la cuota vuelve sola; seguir apartándolo sería tirar un modelo
+    // que ya funciona.
+    resetQuotaState();
+    for (let i = 0; i < 20; i += 1) penalize('openrouter', 'm', null);
+    const espera = quotaStatus('openrouter', 'm').cooldownMs;
+    assert.ok(espera <= msUntilUtcMidnight() + 1000, `no debe pasar del reinicio, fue ${espera}`);
   });
 });
 

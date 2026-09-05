@@ -70,6 +70,23 @@ const learned = new Map<string, Partial<QuotaLimits>>();
 /** Cuarentenas por 429, con el instante en el que expiran. */
 const cooldowns = new Map<string, number>();
 
+/**
+ * Cuántos 429 seguidos lleva cada modelo. Se borra en cuanto uno responde bien.
+ *
+ * Sirve para distinguir dos cosas que el propio 429 no distingue: un pico momentáneo
+ * —un modelo `:free` congestionado a la hora punta, que en un minuto vuelve— de un cubo
+ * agotado de verdad, que va a seguir agotado un buen rato. Reintentar cada minuto el
+ * segundo caso es lo que hace daño: cada intento cuesta tiempo y, en OpenRouter, una de
+ * las 50 peticiones diarias, porque allí las fallidas también cuentan.
+ */
+const rateLimitStreaks = new Map<string, number>();
+
+/** Primer castigo tras un 429 sin `retry-after`. */
+const RATE_LIMIT_BASE_MS = MINUTE_MS;
+
+/** Tope del castigo. Más allá, un modelo que se recuperó tardaría demasiado en volver. */
+const RATE_LIMIT_MAX_MS = 6 * 60 * 60 * 1000;
+
 function bucketKey(providerId: ProviderId, modelId: string): string {
   // En OpenRouter todos los modelos comparten el cubo de la cuenta.
   return getProvider(providerId)?.quotaScope === 'account' ? providerId : `${providerId}:${modelId}`;
@@ -192,9 +209,40 @@ export function applySnapshot(providerId: ProviderId, modelId: string, snapshot:
 }
 
 /** Marca una espera tras un 429. Sin `retryAfterMs` usa un minuto por defecto. */
+/**
+ * Aparta un modelo tras un 429, con castigo creciente.
+ *
+ * El primero cuesta un minuto; si al volver se repite, se dobla, y así hasta el tope.
+ * Un castigo fijo no sirve para los dos casos que existen: con uno corto, un modelo
+ * agotado de verdad se reintenta sin parar; con uno largo, un pico de un minuto te deja
+ * sin el mejor modelo durante horas. Doblar empieza barato y se pone caro solo con quien
+ * demuestra estarlo.
+ *
+ * Nunca se castiga más allá del reinicio diario: pasada esa hora la cuota vuelve sola y
+ * seguir apartándolo sería tirar un modelo que ya funciona.
+ */
 export function penalize(providerId: ProviderId, modelId: string, retryAfterMs: number | null): void {
-  const wait = retryAfterMs && retryAfterMs > 0 ? Math.min(retryAfterMs, 6 * 60 * 60 * 1000) : MINUTE_MS;
-  cooldowns.set(bucketKey(providerId, modelId), Date.now() + wait);
+  const key = bucketKey(providerId, modelId);
+  const streak = (rateLimitStreaks.get(key) ?? 0) + 1;
+  rateLimitStreaks.set(key, streak);
+
+  // Si el proveedor dice cuándo volver, sabe más que nosotros y manda su cifra.
+  if (retryAfterMs && retryAfterMs > 0) {
+    cooldowns.set(key, Date.now() + Math.min(retryAfterMs, RATE_LIMIT_MAX_MS));
+    return;
+  }
+
+  const escalated = Math.min(RATE_LIMIT_BASE_MS * 2 ** (streak - 1), RATE_LIMIT_MAX_MS);
+  cooldowns.set(key, Date.now() + Math.min(escalated, msUntilUtcMidnight()));
+}
+
+/**
+ * Una petición que sale bien borra la racha: el modelo ha demostrado que vuelve a
+ * servir, así que el próximo 429 debe volver a costar un minuto y no lo que llevara
+ * acumulado.
+ */
+export function clearRateLimitStreak(providerId: ProviderId, modelId: string): void {
+  rateLimitStreaks.delete(bucketKey(providerId, modelId));
 }
 
 export function msUntilUtcMidnight(now = Date.now()): number {
@@ -233,4 +281,5 @@ export function resetQuotaState(): void {
   windows.clear();
   learned.clear();
   cooldowns.clear();
+  rateLimitStreaks.clear();
 }

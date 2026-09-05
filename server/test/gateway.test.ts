@@ -174,6 +174,16 @@ async function chat(app: FastifyInstance, key: string, payload: Record<string, u
   });
 }
 
+/** Espera a que algo se cumpla, hasta un tope. Devuelve si llegó a cumplirse. */
+async function waitUntil(condition: () => boolean, timeoutMs = 3000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (condition()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  return condition();
+}
+
 let app: FastifyInstance;
 
 beforeEach(async () => {
@@ -574,9 +584,13 @@ describe('gateway', () => {
     assert.equal(response.statusCode, 200, 'debe seguir por el proveedor sano');
     assert.equal(response.headers['x-freerouter-model'], 'groq/g');
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const cerebrasKey = listProviderKeys().find((entry) => entry.providerId === 'cerebras');
-    assert.equal(cerebrasKey?.status, 'invalid');
+    // La revalidación va en segundo plano: se espera a que ocurra, no a que pase un
+    // tiempo. Un plazo fijo de 50 ms bastaba casi siempre y fallaba con la máquina
+    // cargada, que es la peor clase de prueba: la que falla sin que nada esté roto.
+    const invalidada = await waitUntil(
+      () => listProviderKeys().find((entry) => entry.providerId === 'cerebras')?.status === 'invalid',
+    );
+    assert.ok(invalidada, 'la cuenta debe acabar marcada como no utilizable');
   });
 
   it('un modelo vetado con 401 no tumba al resto del proveedor', async () => {
