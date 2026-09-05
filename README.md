@@ -7,7 +7,7 @@ cuotas de cada proveedor para no provocar 429 y hace failover cuando alguno fall
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg)](docker-compose.yml)
-[![Tests](https://img.shields.io/badge/tests-106%20passing-success.svg)](#tests)
+[![Tests](https://img.shields.io/badge/tests-127%20passing-success.svg)](#tests)
 
 ```python
 from openai import OpenAI
@@ -127,8 +127,10 @@ respuesta = client.chat.completions.create(
 )
 ```
 
-La respuesta trae la cabecera `x-freerouter-model` con el modelo que acabó atendiendo la
-petición, y `x-freerouter-attempts` con cuántos hicieron falta.
+La respuesta trae tres cabeceras: `x-freerouter-model` con el modelo que acabó
+atendiendo la petición, `x-freerouter-attempts` con cuántos hicieron falta y
+`x-freerouter-router-ms` con lo que tardó FreeRouter en decidir —unos 4 ms, para que
+puedas comprobar tú mismo que el tiempo se lo lleva el proveedor y no el router.
 
 ### Endpoints
 
@@ -386,6 +388,8 @@ peticiones fallidas también la consumen.
 | `FREEROUTER_HOME`              | `~/.freerouter`       | Base de datos y clave maestra                         |
 | `FREEROUTER_PASSPHRASE`        | —                     | Deriva la clave maestra de una passphrase (scrypt)    |
 | `ARTIFICIAL_ANALYSIS_API_KEY`  | —                     | Activa el Intelligence Index real                     |
+| `FREEROUTER_DB`                | `<HOME>/freerouter.db`| Ruta del fichero SQLite                               |
+| `LOG_LEVEL`                    | `info`                | Verbosidad del log (`debug`, `warn`, `error`…)        |
 | `FREEROUTER_BIND`              | `0.0.0.0`             | A qué interfaz se publica el 8787 (solo Docker)       |
 | `FREEROUTER_DOMAIN`            | —                     | Dominio para el perfil `https` (Caddy)                |
 | `ACME_EMAIL`                   | —                     | Correo de aviso de Let's Encrypt, perfil `https`      |
@@ -488,8 +492,15 @@ Aprendido con tráfico real, no en teoría:
   ciertos clientes y responden 401 aunque la clave sea válida. Antes de dar la clave
   por muerta se revalida; si está bien, se desactiva **solo ese modelo**. Sin esta
   comprobación un modelo raro tumbaría a los otros 17 del proveedor.
-- **Continuar la cadena**: cualquier error salvo `bad_request` deja pasar al siguiente
-  candidato. Un fallo de un proveedor no dice nada sobre los demás.
+- **Continuar la cadena**: *cualquier* error deja pasar al siguiente candidato, un 400
+  incluido. En teoría un 400 es culpa de la petición y fallaría igual en todos; en la
+  práctica no lo es —OpenCode devuelve 400 con «Upstream request failed: Model is
+  unavailable», que es un problema suyo disfrazado—. Si todos los candidatos coinciden en
+  rechazarla, entonces sí se devuelve 400 con el motivo, en vez de un 502 genérico.
+- **Un proveedor que no admite streaming** no se lleva un fallo por ello. Medir el TTFT
+  es un extra nuestro (ver [Medir el TTFT siempre](#medir-el-ttft-siempre)): si lo
+  rechaza, se reintenta el mismo modelo sin trocear y queda apuntado para no volver a
+  pedírselo. No cuenta como intento fallido ni ensucia su salud.
 
 Los modelos desactivados automáticamente se pueden reactivar desde el panel.
 
@@ -545,8 +556,13 @@ La pestaña **Peticiones** del panel lista las últimas 500 llamadas: qué API k
 qué modelo acabó atendiéndola, TTFT, tok/s de esa petición concreta, tokens e intentos.
 Al pinchar una fila se despliega la cronología, el prompt y la respuesta.
 
+La tabla trae TTFT y **tiempo total** por separado, que no son lo mismo: si la respuesta
+llegó de una pieza no hay primer token que cronometrar y el TTFT queda en blanco (ver
+[Medir el TTFT siempre](#medir-el-ttft-siempre)).
+
 La **cronología** es lo que explica un TTFT que no cuadra: guarda a qué modelo se
-intentó, en qué orden, con qué error y **cuánto tardó cada intento**.
+intentó, en qué orden, con qué error y **cuánto tardó cada intento**, más el coste del
+propio router.
 
 ```
 Intentos                              1,4 s perdidos antes de acertar
@@ -611,7 +627,7 @@ control.
 Al arrancar, FreeRouter mide **todos** los modelos con el mismo prompt (una respuesta de
 unas cien palabras) leído en streaming, y guarda TTFT y tok/s. Sin esa medición inicial
 el router ordenaría casi solo por calidad durante un buen rato, porque un modelo sin
-datos hereda la mediana del grupo.
+datos se queda en la mitad de la escala de velocidad: ni ventaja ni castigo.
 
 Se dispara sola en dos momentos: al arrancar y **al conectar un proveedor**. Lo segundo
 importa más de lo que parece: el sondeo periódico mide un modelo cada dos minutos, así
@@ -644,7 +660,7 @@ cancela y manda el tope total, para no cortar a un modelo lento pero sano mientr
 escribe.
 
 **Orden.** Dentro de cada proveedor se miden primero los de más calidad. La calibración
-de un catálogo grande dura minutos y durante ese rato el router decide con medianas; que
+de un catálogo grande dura minutos y durante ese rato el router decide a medias; que
 los candidatos que de verdad va a elegir tengan su medida en los primeros segundos
 importa más que el orden del resto de la cola.
 
@@ -662,11 +678,12 @@ stream y los tokens se estiman por longitud cuando el proveedor no manda `usage`
 npm test
 ```
 
-106 tests: scoring por perfil, cuotas (incluida la diferencia entre cubo por modelo y
-por cuenta), filtrado por capacidades, disyuntor de salud, autenticación del panel,
-traducción de la Responses API, y pruebas de extremo a extremo del gateway con `fetch`
-simulado — entre ellas 10 peticiones concurrentes repartidas entre tres proveedores sin
-un solo 429 ni reintento.
+127 tests: scoring por perfil (con la saturación de velocidad y el suelo de calidad),
+cuotas —incluida la diferencia entre cubo por modelo y por cuenta, y el castigo creciente
+tras un 429—, filtrado por capacidades, disyuntor de salud, autenticación del panel,
+traducción de la Responses API en los dos sentidos, rearmado de una respuesta troceada, y
+pruebas de extremo a extremo del gateway con `fetch` simulado — entre ellas 10 peticiones
+concurrentes repartidas entre tres proveedores sin un solo 429 ni reintento.
 
 `test/http.test.ts` levanta un servidor HTTP **real** en vez de usar `app.inject()`.
 Existe porque un bug que abortaba todas las peticiones pasó limpiamente por los tests
@@ -688,10 +705,13 @@ por la misma razón: un doble más permisivo que la realidad no prueba nada.
 │       │                    # overrides.ts solo para Groq, Cloudflare y OpenRouter
 │       ├── routing/         # quota · health · score · select · execute · probe
 │       ├── catalog/         # Sincronización con Artificial Analysis
-│       ├── routes/          # v1.ts (API pública) · admin.ts (panel) · auth.ts
+│       ├── routes/          # v1.ts (API pública) · responses-api.ts (traducción de
+│       │                    # la Responses API) · admin.ts (panel) · auth.ts
 │       ├── crypto.ts        # AES-256-GCM para las claves de proveedor
 │       └── db.ts            # SQLite y migraciones idempotentes
 ├── web/                     # Panel: Vite · React · TypeScript
+│   └── src/pages/           # Dashboard (Estado) · Activity (Peticiones)
+│                            # Providers · Keys · Auth
 ├── docker-compose.yml       # Perfiles `https` (Caddy) y `tunnel` (Cloudflare)
 └── Caddyfile                # HTTPS automático para el perfil `https`
 ```
