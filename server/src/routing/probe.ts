@@ -37,8 +37,34 @@ import {
 } from './health.js';
 import { checkQuota, effectiveLimits, quotaStatus, reserve, settle } from './quota.js';
 
-/** Un modelo se considera "frío" si lleva más de 30 minutos sin una medida. */
-const STALE_AFTER_MS = 30 * 60_000;
+/**
+ * Cada cuánto se vuelve a medir un modelo que nadie está usando.
+ *
+ * No es un número fijo, y no puede serlo: el sondeo gasta una petición real de la cuota
+ * del proveedor. Medir cada modelo cada hora le cuesta a Cohere el 72 % de sus 33
+ * peticiones diarias y a OpenRouter el 48 % de sus 50, mientras que a NVIDIA o Cloudflare
+ * —que no tienen tope diario— no le cuesta nada. Un umbral único o arruina al pobre o
+ * desaprovecha al rico.
+ *
+ * Así que el ritmo sale de la cuota: se reserva para sondeos una parte pequeña de las
+ * peticiones diarias del proveedor y se reparte entre sus modelos.
+ *
+ *     sondeos_por_modelo_al_dia = rpd · PROBE_BUDGET_SHARE / nº de modelos
+ *     cooldown                  = 24 h / sondeos_por_modelo_al_dia
+ *
+ * Un proveedor sin tope diario usa `BASE_PROBE_COOLDOWN_MS` directamente. Tres horas y no
+ * una: la velocidad de un modelo no cambia de hora en hora, los que de verdad se usan ya
+ * refrescan sus métricas con el tráfico real sin coste añadido, y hay proveedores sin
+ * tope de peticiones que sí lo tienen de otra cosa —Cloudflare cuenta neuronas— a los que
+ * 68 sondeos por hora sí les dolería. Y a un
+ * proveedor tan justo que ni eso se lo pueda permitir le sale un cooldown enorme, que es
+ * la respuesta correcta: con 33 peticiones al día no se gastan en medir, se mide una vez
+ * en la calibración inicial y a partir de ahí manda el tráfico real, que actualiza las
+ * mismas métricas sin costar nada aparte.
+ */
+const BASE_PROBE_COOLDOWN_MS = 3 * 60 * 60_000;
+/** Parte de la cuota diaria que puede irse en sondeos. */
+const PROBE_BUDGET_SHARE = 0.05;
 /** No se sondea un proveedor al que le quede menos de este porcentaje de cuota diaria. */
 const MIN_DAILY_HEADROOM = 0.2;
 /** Techo de generación del sondeo. */
@@ -322,21 +348,51 @@ function probeable(model: StoredModel): boolean {
 }
 
 /** Elige el candidato que más falta hace medir, o `null` si no toca sondear nada. */
-export function pickProbeTarget(models: StoredModel[] = listModels()): StoredModel | null {
-  const health = new Map(allHealth().map((state) => [`${state.providerId}:${state.modelId}`, state]));
-  let best: { model: StoredModel; staleness: number } | null = null;
+/**
+ * Cada cuánto puede remedirse este modelo, según lo que le cueste a su proveedor.
+ * Ver `BASE_PROBE_COOLDOWN_MS`.
+ */
+export function probeCooldownMs(model: StoredModel, modelsOfProvider: number): number {
+  const { rpd } = effectiveLimits(model.providerId, model.id);
+  if (rpd === null) return BASE_PROBE_COOLDOWN_MS;
 
+  const perModelPerDay = (rpd * PROBE_BUDGET_SHARE) / Math.max(1, modelsOfProvider);
+  if (perModelPerDay <= 0) return Number.POSITIVE_INFINITY;
+  // Nunca más a menudo que la base: la cuota permite más, pero la velocidad de un modelo
+  // no cambia de hora en hora y el tráfico real ya refresca la de los que se usan.
+  return Math.max(BASE_PROBE_COOLDOWN_MS, 86_400_000 / perModelPerDay);
+}
+
+/**
+ * Todos los modelos que toca remedir ahora mismo.
+ *
+ * Antes se elegía uno solo cada dos minutos, y con un catálogo de 76 modelos el bucle no
+ * daba abasto ni de lejos: hacían falta 152 mediciones por hora y se hacían 30. Ahora se
+ * barre la lista entera y el freno lo pone el cooldown de cada modelo, que ya está atado
+ * a lo que su proveedor se puede permitir.
+ */
+export function pickProbeTargets(models: StoredModel[] = listModels()): StoredModel[] {
+  const health = new Map(allHealth().map((state) => [`${state.providerId}:${state.modelId}`, state]));
+  const porProveedor = new Map<ProviderId, number>();
+  for (const model of models) porProveedor.set(model.providerId, (porProveedor.get(model.providerId) ?? 0) + 1);
+
+  const due: Array<{ model: StoredModel; staleness: number }> = [];
   for (const model of models) {
     const state = health.get(`${model.providerId}:${model.id}`) ?? healthOf(model.providerId, model.id);
     if (isQuarantined(state)) continue;
-    if (stalenessMs(state) < STALE_AFTER_MS) continue;
+    if (stalenessMs(state) < probeCooldownMs(model, porProveedor.get(model.providerId) ?? 1)) continue;
     if (!probeable(model)) continue;
-
-    const staleness = stalenessMs(state);
-    if (!best || staleness > best.staleness) best = { model, staleness };
+    due.push({ model, staleness: stalenessMs(state) });
   }
 
-  return best?.model ?? null;
+  // Primero el que lleva más tiempo sin medirse.
+  due.sort((a, b) => b.staleness - a.staleness);
+  return due.map((x) => x.model);
+}
+
+/** Compatibilidad: el más urgente de los que tocan. */
+export function pickProbeTarget(models: StoredModel[] = listModels()): StoredModel | null {
+  return pickProbeTargets(models)[0] ?? null;
 }
 
 export async function probeOnce(): Promise<{ probed: string | null }> {
@@ -344,6 +400,38 @@ export async function probeOnce(): Promise<{ probed: string | null }> {
   if (!target) return { probed: null };
   await applyMeasurement(target, await measureModel(target));
   return { probed: `${target.providerId}/${target.id}` };
+}
+
+/**
+ * Remide de una tacada todos los modelos a los que les toca.
+ *
+ * Casi siempre no toca ninguno y esto no hace nada, que es lo esperado: el freno no es la
+ * frecuencia del barrido sino el cooldown de cada modelo, atado a la cuota de su
+ * proveedor. Así el coste no depende del tamaño del catálogo, cosa que sí pasaba cuando
+ * se medía de uno en uno.
+ */
+export async function probeSweep(): Promise<WarmupResult> {
+  const result: WarmupResult = { measured: 0, failed: 0, skipped: 0, total: 0 };
+  if (warmupRunning) return result;
+
+  const due = pickProbeTargets();
+  result.total = due.length;
+  if (due.length === 0) return result;
+
+  const byProvider = new Map<ProviderId, StoredModel[]>();
+  for (const model of due) {
+    const list = byProvider.get(model.providerId) ?? [];
+    list.push(model);
+    byProvider.set(model.providerId, list);
+  }
+
+  warmupRunning = true;
+  try {
+    await measureBatch(byProvider, result);
+  } finally {
+    warmupRunning = false;
+  }
+  return result;
 }
 
 export interface WarmupResult {
@@ -377,6 +465,51 @@ let warmupRunning = false;
 
 export function isWarmupRunning(): boolean {
   return warmupRunning;
+}
+
+/**
+ * Mide un lote de modelos agrupados por proveedor.
+ *
+ * Lo usan la calibración inicial y el barrido periódico, que solo se diferencian en qué
+ * modelos eligen. Cada proveedor es una API distinta con su propia cuota, así que van en
+ * paralelo; el tope global sigue siendo el que protege la calidad de la medida.
+ */
+async function measureBatch(byProvider: Map<ProviderId, StoredModel[]>, result: WarmupResult): Promise<void> {
+  const globalSlots = new Semaphore(MAX_CONCURRENT_PROBES);
+
+  await Promise.all(
+    [...byProvider.values()].map(async (models) => {
+      const queue = [...models];
+      const workers = Math.min(MAX_PER_PROVIDER, queue.length);
+
+      await Promise.all(
+        Array.from({ length: workers }, async () => {
+          while (queue.length > 0) {
+            const model = queue.shift();
+            if (!model) return;
+
+            // Quedarse sin cuota por minuto a mitad de la calibración es lo normal: con
+            // 20 req/min el cubo se llena antes de recorrer el catálogo. Esperar el
+            // hueco es la diferencia entre calibrar unos pocos y calibrarlos todos.
+            if (!(await waitForQuota(model))) {
+              result.skipped += 1;
+              continue;
+            }
+
+            const release = await globalSlots.acquire();
+            try {
+              const ok = await applyMeasurement(model, await measureModel(model));
+              if (ok) result.measured += 1;
+              else result.failed += 1;
+            } finally {
+              release();
+            }
+            await sleep(WARMUP_GAP_MS);
+          }
+        }),
+      );
+    }),
+  );
 }
 
 async function runWarmup(options: { force?: boolean }): Promise<WarmupResult> {
@@ -417,42 +550,7 @@ async function runWarmup(options: { force?: boolean }): Promise<WarmupResult> {
     list.sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0));
   }
 
-  const globalSlots = new Semaphore(MAX_CONCURRENT_PROBES);
-
-  await Promise.all(
-    [...byProvider.values()].map(async (models) => {
-      const queue = [...models];
-      const workers = Math.min(MAX_PER_PROVIDER, queue.length);
-
-      await Promise.all(
-        Array.from({ length: workers }, async () => {
-          while (queue.length > 0) {
-            const model = queue.shift();
-            if (!model) return;
-
-            // Quedarse sin cuota por minuto a mitad de la calibración es lo normal: con
-            // 20 req/min el cubo se llena antes de recorrer el catálogo. Esperar el
-            // hueco es la diferencia entre calibrar unos pocos y calibrarlos todos.
-            if (!(await waitForQuota(model))) {
-              result.skipped += 1;
-              continue;
-            }
-
-            const release = await globalSlots.acquire();
-            try {
-              const ok = await applyMeasurement(model, await measureModel(model));
-              if (ok) result.measured += 1;
-              else result.failed += 1;
-            } finally {
-              release();
-            }
-            await sleep(WARMUP_GAP_MS);
-          }
-        }),
-      );
-    }),
-  );
-
+  await measureBatch(byProvider, result);
   return result;
 }
 
@@ -501,9 +599,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function startProbeLoop(intervalMs = 120_000): NodeJS.Timeout {
+/**
+ * Comprueba cada minuto si hay algo que remedir. Barato: si nada ha cumplido su
+ * cooldown, no se hace ni una llamada.
+ */
+export function startProbeLoop(intervalMs = 60_000): NodeJS.Timeout {
   const timer = setInterval(() => {
-    void probeOnce().catch(() => undefined);
+    void probeSweep().catch(() => undefined);
   }, intervalMs);
   timer.unref();
   return timer;

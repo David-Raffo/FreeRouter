@@ -18,6 +18,7 @@ import {
   settle,
 } from '../src/routing/quota.js';
 import { getProvider } from '../src/providers/registry.js';
+import { probeCooldownMs } from '../src/routing/probe.js';
 import { buildProvider } from '../src/providers/generic.js';
 import type { ProviderDescriptor } from '../src/providers/descriptor.js';
 import { computeTps } from '../src/routing/execute.js';
@@ -865,5 +866,52 @@ describe('agregadores que no publican precios', () => {
     const models = await buildProvider(descriptor()).listModels('');
     assert.equal(models.length, MEZCLA.length, 'sin filtro pasa todo, incluido Claude');
     assert.ok(models.some((m) => m.id.includes('claude')));
+  });
+});
+
+describe('cada cuánto se remide un modelo', () => {
+  const modelo = (providerId: string): StoredModel => ({ providerId, id: 'x' }) as unknown as StoredModel;
+  const HORA = 3_600_000;
+
+  it('el ritmo sale de la cuota del proveedor, no de un número fijo', () => {
+    // Un umbral único o arruina al pobre o desaprovecha al rico: medir cada modelo cada
+    // hora le cuesta a Cohere el 72 % de sus 33 peticiones diarias, y a NVIDIA nada.
+    const cohere = probeCooldownMs(modelo('cohere'), 10);
+    const groq = probeCooldownMs(modelo('groq'), 7);
+    const nvidia = probeCooldownMs(modelo('nvidia'), 68);
+
+    assert.ok(cohere > groq, 'con 33 peticiones al día no se gastan en medir');
+    assert.ok(groq > nvidia, 'Groq tiene tope diario y NVIDIA no');
+    assert.ok(nvidia >= 3 * HORA, 'sin tope diario manda la base');
+  });
+
+  it('nunca se gasta en sondeos más de la parte reservada de la cuota diaria', () => {
+    for (const [id, modelos] of [
+      ['groq', 7],
+      ['google', 10],
+      ['openrouter', 18],
+      ['cohere', 10],
+      ['requesty', 20],
+      ['modelscope', 47],
+    ] as const) {
+      const rpd = getProvider(id)?.defaultLimits.rpd;
+      assert.ok(rpd, `${id} debería tener cuota diaria`);
+      const sondeosDiarios = (86_400_000 / probeCooldownMs(modelo(id), modelos)) * modelos;
+      const parte = sondeosDiarios / rpd!;
+      assert.ok(parte <= 0.051, `${id} se gastaría el ${(parte * 100).toFixed(1)} % de su cuota en medir`);
+    }
+  });
+
+  it('un catálogo más grande se mide menos a menudo, no más caro', () => {
+    // Es lo que rompía antes: el coste crecía con el número de modelos hasta que el
+    // bucle no daba abasto. Ahora el presupuesto está fijado y lo que se estira es la
+    // frecuencia, así que da igual que el proveedor traiga 5 modelos o 500.
+    const rpd = getProvider('groq')!.defaultLimits.rpd!;
+    const gasto = (modelos: number) => (86_400_000 / probeCooldownMs(modelo('groq'), modelos)) * modelos;
+
+    assert.ok(probeCooldownMs(modelo('groq'), 500) > probeCooldownMs(modelo('groq'), 5), 'se espacian');
+    for (const n of [5, 50, 500]) {
+      assert.ok(gasto(n) <= rpd * 0.051, `con ${n} modelos gastaría ${gasto(n).toFixed(0)} de ${rpd}`);
+    }
   });
 });

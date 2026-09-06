@@ -688,6 +688,42 @@ La calibración respeta la cuota como cualquier otra petición: si el cubo por m
 un proveedor se llena, **espera** al hueco en vez de saltarse el modelo. Para remedirlo
 todo desde cero: `POST /api/warmup?force=true`.
 
+**Cada cuánto se remide un modelo.** No es un número fijo, y no puede serlo: un sondeo
+gasta una petición real de la cuota del proveedor. Medir cada modelo cada hora le cuesta a
+Cohere el 72 % de sus 33 peticiones diarias y a OpenRouter el 48 % de sus 50, mientras que
+a NVIDIA o Cloudflare —sin tope diario— no le cuesta nada. Un umbral único o arruina al
+pobre o desaprovecha al rico.
+
+Así que el ritmo sale de la cuota: se reserva el **5 %** de las peticiones diarias del
+proveedor para sondeos y se reparte entre sus modelos.
+
+| Proveedor | Modelos | Cuota/día | Se remide cada | Coste |
+| --- | --- | --- | --- | --- |
+| NVIDIA | 68 | sin tope | 3 h | — |
+| Groq | 7 | 1.000 | 3,4 h | 5 % |
+| ModelScope | 47 | 2.000 | 11,3 h | 5 % |
+| Google | 10 | 250 | 19,2 h | 5 % |
+| OpenRouter | 18 | 50 | 172 h | 5 % |
+| Cohere | 10 | 33 | 145 h | 5 % |
+
+A un proveedor tan justo que le salga un cooldown de días, la respuesta correcta es
+justamente esa: con 33 peticiones diarias no se gastan en medir. Se mide una vez en la
+calibración inicial y a partir de ahí manda el tráfico real, que actualiza las mismas
+métricas sin coste añadido.
+
+Las tres horas de base tampoco son una hora: la velocidad de un modelo no cambia de hora
+en hora, los que de verdad se usan ya se refrescan solos, y hay proveedores sin tope de
+peticiones que sí lo tienen de otra cosa —Cloudflare cuenta neuronas— a los que 68
+sondeos por hora sí les dolería.
+
+**El bucle barre, no gotea.** Antes se medía un modelo cada dos minutos: con 76 modelos y
+un umbral de 30 minutos hacían falta 152 mediciones por hora y se hacían 30, así que el
+catálogo nunca llegaba a estar al día. Ahora se comprueba cada minuto qué modelos han
+cumplido su cooldown y se miden todos juntos, con la misma concurrencia que la
+calibración. Casi siempre no toca ninguno y el barrido no hace ni una llamada: el freno
+ya no es la frecuencia del bucle sino el cooldown de cada modelo. En el catálogo completo
+de 24 proveedores salen unos 1.150 sondeos al día, menos de uno por minuto de media.
+
 **Paralelismo.** Cada proveedor es una API distinta con su propia cuota, así que se
 miden en paralelo. Hay un tope global de 6 mediciones simultáneas, y no es arbitrario:
 varios streams compitiendo por el mismo ancho de banda y el mismo bucle de eventos hacen
