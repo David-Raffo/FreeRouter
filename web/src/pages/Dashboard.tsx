@@ -25,6 +25,15 @@ export function Dashboard() {
   const [query, setQuery] = useState('');
   const [data, setData] = useState<ModelsPage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Qué acabas de hacer, y cómo deshacerlo.
+   *
+   * Sin esto la acción era invisible: los modelos apagados caen al final de la lista, así
+   * que al desactivar uno la fila desaparece de la página y la tabla se recoloca sola. El
+   * botón funcionaba, pero parecía de adorno. Y volver a encontrar el modelo entre los
+   * sesenta del fondo para deshacerlo no era razonable.
+   */
+  const [notice, setNotice] = useState<{ text: string; undo: () => void } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,9 +73,42 @@ export function Dashboard() {
     void api.models({ sort, page, pageSize: PAGE_SIZE, q: query }).then(setData);
   }
 
+  function toggle(model: ModelRow) {
+    const enabled = !model.enabled;
+    const nombre = `${model.providerId}/${model.id}`;
+    void api.setModelEnabled(model.providerId, model.id, enabled).then(() => {
+      reload();
+      setNotice({
+        text: enabled
+          ? `${nombre} vuelve al enrutado.`
+          : `${nombre} desactivado. Ha bajado al final de la lista.`,
+        undo: () => {
+          void api.setModelEnabled(model.providerId, model.id, !enabled).then(() => {
+            reload();
+            setNotice(null);
+          });
+        },
+      });
+    });
+  }
+
   return (
     <div className="stack">
       <CalibrationStatus summary={data.summary} />
+
+      {notice && (
+        <div className="notice row spread wrap">
+          <span>{notice.text}</span>
+          <div className="row">
+            <button className="ghost" onClick={notice.undo}>
+              Deshacer
+            </button>
+            <button className="ghost" onClick={() => setNotice(null)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="row spread wrap">
         <div className="row wrap">
@@ -147,9 +189,7 @@ export function Dashboard() {
                         ? 'Sacar este modelo del enrutado'
                         : 'Volver a incluirlo. Se desactivan solos los modelos que el proveedor rechaza.'
                     }
-                    onClick={() => {
-                      void api.setModelEnabled(model.providerId, model.id, !model.enabled).then(reload);
-                    }}
+                    onClick={() => toggle(model)}
                   >
                     {model.enabled ? 'Desactivar' : 'Activar'}
                   </button>
