@@ -529,6 +529,55 @@
       "publicModelList": true,
       "defaultContext": 32768,
       "verifiedOn": "2026-09-06"
+    },
+    {
+      "id": "orcarouter",
+      "label": "OrcaRouter",
+      "baseUrl": "https://api.orcarouter.ai/v1",
+      "keyHint": "clave de OrcaRouter",
+      "consoleUrl": "https://www.orcarouter.ai/",
+      "failoverRank": 8,
+      "quotaScope": "account",
+      "rateLimitPenaltyFactor": 2,
+      "defaultLimits": {
+        "rpm": 15,
+        "tpm": null,
+        "rpd": null,
+        "tpd": null
+      },
+      "freeTier": {
+        "renewing": true,
+        "note": "Agregador al estilo OpenRouter con modelos a precio cero de verdad: no tocan saldo ni piden tarjeta, y su documentacion dice que la asignacion no se agota, que el limite es por tasa de peticiones y no por cuota. Como no publican esa tasa, el 15/min de aqui es una estimacion conservadora y el castigo va al doble: el 429 es la unica senal que tenemos. Su listado devuelve 194 modelos SIN campo de precio, mezclando Claude y GPT de pago con los gratuitos, asi que se filtra por el sufijo del id. Al 2026-09-06 quedan tres modelos gratis mas el alias orcarouter/free, que reparte entre ellos por dificultad."
+      },
+      "freeOnly": false,
+      "freeIdPattern": "(-free$|:free$|^orcarouter/free$)",
+      "publicModelList": true,
+      "defaultContext": 32768,
+      "verifiedOn": "2026-09-06"
+    },
+    {
+      "id": "tokenrouter",
+      "label": "TokenRouter",
+      "baseUrl": "https://api.tokenrouter.com/v1",
+      "keyHint": "clave de TokenRouter",
+      "consoleUrl": "https://www.tokenrouter.com/",
+      "failoverRank": 8,
+      "quotaScope": "account",
+      "rateLimitPenaltyFactor": 2,
+      "defaultLimits": {
+        "rpm": 10,
+        "tpm": null,
+        "rpd": null,
+        "tpd": null
+      },
+      "freeTier": {
+        "renewing": true,
+        "note": "Agregador con dos modelos a precio cero al 2026-09-06: z-ai/glm-5.3-free y nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free. No publican limites por ningun lado, asi que el 10/min es una estimacion prudente y el castigo va al doble. Su listado exige clave, de modo que no se puede comprobar el precio antes de enrutar: por eso solo pasan los ids con sufijo de gratuito, que es lo que evita facturar sin querer. Ellos mismos avisan de que la capacidad gratuita es limitada y no garantizan estabilidad ni concurrencia."
+      },
+      "freeOnly": false,
+      "freeIdPattern": "(-free$|:free$)",
+      "defaultContext": 32768,
+      "verifiedOn": "2026-09-06"
     }
   ]
 }

@@ -1,6 +1,6 @@
 # FreeRouter
 
-**Un solo endpoint compatible con OpenAI por delante de 22 proveedores de inferencia
+**Un solo endpoint compatible con OpenAI por delante de 24 proveedores de inferencia
 gratuita.** Tú pones las claves; él decide qué modelo usar en cada petición, respeta las
 cuotas de cada proveedor para no provocar 429 y hace failover cuando alguno falla.
 
@@ -327,6 +327,8 @@ cuenta— la aportan en `src/providers/overrides.ts`.
 | **Requesty** | ~200 req/día | Solo se enrutan sus modelos a precio cero |
 | **OpenRouter** | 50 req/día (1.000 con 10 $ gastados) | Los fallos también gastan cuota |
 | **ModelScope** | 2.000 req/día por cuenta, reinicio cada 24 h | Más cuota diaria que Groq. Plataforma china: peor latencia desde Europa |
+| **OrcaRouter** | Limitado por tasa, no por cuota; sin tarjeta | 3 modelos gratis + un alias que reparte entre ellos |
+| **TokenRouter** | 2 modelos a precio cero | No publican límites; ellos mismos avisan de que no garantizan estabilidad |
 | **Pollinations** | 12 req/min con registro gratuito | 280 modelos de texto de 394; el resto son de imagen y audio |
 | **Cohere** | 1.000 llamadas/mes · 20 req/min | Claves de prueba: evaluación, no producción |
 | **Hugging Face** | 0,10 $/mes en crédito que se renueva | Da para poco; va casi al final de la cadena |
@@ -376,6 +378,12 @@ un modelo de embeddings o a un generador de imágenes falla siempre:
 - `freeOnly` para los agregadores que mezclan gratis y de pago (OpenRouter, Requesty,
   SiliconFlow): solo pasan los de precio cero confirmado. Un modelo sin precio conocido
   se descarta — mejor perder un modelo que facturar sin querer.
+- `freeIdPattern` cuando el agregador mezcla gratis y de pago pero **no publica precios
+  legibles**. OrcaRouter devuelve 194 modelos sin campo de precio, con Claude Opus y GPT
+  entre ellos; TokenRouter ni siquiera deja listarlos sin clave. En los dos, lo único que
+  distingue a los gratuitos es el sufijo del id (`-free`, `:free`), así que solo pasan
+  esos. Sin precio que comprobar, el id es la única defensa contra facturar sin querer:
+  en OrcaRouter deja 4 modelos de los 194.
 - `model_type` cuando el proveedor lo declara. LLM7 publica 46 modelos: 37 de chat, 6 de
   vídeo y 3 de imagen. Solo entran los 37.
 - Patrones de nombre para embeddings, TTS, transcripción y clasificadores.
@@ -728,7 +736,7 @@ por la misma razón: un doble más permisivo que la realidad no prueba nada.
 .
 ├── server/                  # Node 22 · TypeScript · Fastify 5 · better-sqlite3
 │   ├── catalog/             # Datos editables a mano, sin recompilar
-│   │   ├── providers.json   #   Los 22 proveedores: URL, formato de clave, límites
+│   │   ├── providers.json   #   Los 24 proveedores: URL, formato de clave, límites
 │   │   ├── capabilities.json#   Capacidades de los que no las publican
 │   │   ├── limits.json      #   Semilla de cuotas
 │   │   └── quality.json     #   Intelligence Index cacheado

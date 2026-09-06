@@ -179,6 +179,9 @@ export function splitCredential(key: string): { account: string; token: string }
 
 export function buildProvider(descriptor: ProviderDescriptor, overrides: Partial<Provider> = {}): Provider {
   const exclusions = (descriptor.excludePatterns ?? []).map((pattern) => new RegExp(pattern, 'i'));
+  // Cuando el proveedor no publica precios legibles, el id es lo único que separa lo
+  // gratuito de lo que factura. Ver `freeIdPattern` en el descriptor.
+  const soloGratis = descriptor.freeIdPattern ? new RegExp(descriptor.freeIdPattern, 'i') : null;
   const splits = descriptor.credentialFormat === 'account:token';
 
   const tokenOf = (key: string): string => (splits ? splitCredential(key).token : key);
@@ -237,6 +240,7 @@ export function buildProvider(descriptor: ProviderDescriptor, overrides: Partial
         const identified = needsIdentifiedAccount(raw);
         if (!key && identified) continue;
         if (exclusions.some((pattern) => pattern.test(id))) continue;
+        if (soloGratis && !soloGratis.test(id)) continue;
 
         // Cuando el proveedor publica precios y solo queremos lo gratuito, un modelo sin
         // precio conocido se descarta: es más seguro perder un modelo que facturar.

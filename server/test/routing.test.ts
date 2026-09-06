@@ -18,6 +18,8 @@ import {
   settle,
 } from '../src/routing/quota.js';
 import { getProvider } from '../src/providers/registry.js';
+import { buildProvider } from '../src/providers/generic.js';
+import type { ProviderDescriptor } from '../src/providers/descriptor.js';
 import { computeTps } from '../src/routing/execute.js';
 import { explainNoCandidates, requiredCapabilities, route } from '../src/routing/select.js';
 import { estimateTokens, requestUsesTools } from '../src/routing/tokens.js';
@@ -744,5 +746,68 @@ describe('metadatos de models.dev', () => {
     const [model] = await buildProvider(descriptor).listModels('');
     assert.equal(model?.contextLength, 200000);
     assert.equal(model?.supportsTools, true);
+  });
+});
+
+describe('agregadores que no publican precios', () => {
+  const realFetch = globalThis.fetch;
+
+  /** Un listado como el de OrcaRouter: gratuitos y de pago mezclados, sin precio. */
+  function stubListado(ids: string[]): void {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ data: ids.map((id) => ({ id, object: 'model' })) }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })) as typeof fetch;
+  }
+
+  const descriptor = (freeIdPattern?: string): ProviderDescriptor =>
+    ({
+      id: 'prueba',
+      label: 'Prueba',
+      baseUrl: 'https://ejemplo.test/v1',
+      keyHint: 'x',
+      consoleUrl: 'https://ejemplo.test',
+      failoverRank: 5,
+      quotaScope: 'account',
+      defaultLimits: { rpm: 10, tpm: null, rpd: null, tpd: null },
+      freeTier: { renewing: true, note: '' },
+      freeOnly: false,
+      publicModelList: true,
+      defaultContext: 32768,
+      ...(freeIdPattern ? { freeIdPattern } : {}),
+    }) as ProviderDescriptor;
+
+  const MEZCLA = [
+    'anthropic/claude-opus-4.5',
+    'openai/gpt-6',
+    'deepseek/deepseek-v4-flash-free',
+    'qwen/qwen3.8-27b-free',
+    'nvidia/nemotron-3-nano:free',
+  ];
+
+  after(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it('sin precios que leer, solo se enrutan los ids marcados como gratuitos', async () => {
+    // OrcaRouter publica 194 modelos sin campo de precio, con Claude y GPT entre ellos.
+    // Si no se filtra por el id, el router acabaría mandando tráfico a modelos que
+    // facturan: aquí el sufijo es la única defensa que hay.
+    stubListado(MEZCLA);
+    const provider = buildProvider(descriptor('(-free$|:free$)'));
+    const models = await provider.listModels('');
+
+    assert.deepEqual(
+      models.map((m) => m.id).sort(),
+      ['deepseek/deepseek-v4-flash-free', 'nvidia/nemotron-3-nano:free', 'qwen/qwen3.8-27b-free'],
+    );
+  });
+
+  it('sin el patrón entrarían también los de pago, que es lo que se quiere evitar', async () => {
+    stubListado(MEZCLA);
+    const models = await buildProvider(descriptor()).listModels('');
+    assert.equal(models.length, MEZCLA.length, 'sin filtro pasa todo, incluido Claude');
+    assert.ok(models.some((m) => m.id.includes('claude')));
   });
 });

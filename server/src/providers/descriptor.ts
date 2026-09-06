@@ -65,6 +65,20 @@ export interface ProviderDescriptor {
   extraHeaders?: Record<string, string>;
   /** Ids o patrones de modelo a excluir siempre en este proveedor. */
   excludePatterns?: string[];
+
+  /**
+   * Solo se enrutan los modelos cuyo id encaje con esto.
+   *
+   * Es la inversa de `excludePatterns`, y hace falta cuando un agregador mezcla modelos
+   * gratuitos y de pago pero NO publica precios que se puedan leer: OrcaRouter devuelve
+   * 194 modelos sin campo de precio, y TokenRouter ni siquiera deja listarlos sin clave.
+   * En ambos lo único que distingue a los gratuitos es el sufijo del id (`-free`,
+   * `:free`), igual que hace OpenRouter.
+   *
+   * Cuando no hay precio que comprobar, esto es lo que impide facturar sin querer, así
+   * que un modelo que no encaje se descarta aunque el proveedor lo sirva.
+   */
+  freeIdPattern?: string;
   /** Ventana de contexto asumida cuando el listado no la informa. */
   defaultContext?: number;
   /**
