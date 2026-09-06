@@ -29,6 +29,21 @@ const FAILURES_TO_QUARANTINE = 3;
  * o si el proveedor lo retira y lo vuelve a publicar.
  */
 const FAILURES_TO_RETIRE = 8;
+
+/**
+ * Errores que significan «el proveedor lo anuncia y no funciona», no «se ha caído un
+ * rato»: se agotó el plazo del primer token, o respondió 200 y no generó nada.
+ *
+ * Estos van por la vía rápida. Con el trato normal hacían falta ocho fallos y, entre
+ * cuarentena y cuarentena, eso son horas — durante las cuales el modelo sigue saliendo
+ * como activo y por tanto **puede recibir tráfico real**, que es lo grave. NVIDIA es el
+ * caso claro: anuncia decenas de modelos que no sirven ninguno.
+ *
+ * Aquí se aparta desde el primer fallo, con la misma cuarentena creciente por si fuera
+ * un bache, y se retira al tercero.
+ */
+const DEAD_KINDS = new Set<ErrorKind>(['timeout', 'no_output']);
+const FAILURES_TO_RETIRE_DEAD = 3;
 const BASE_QUARANTINE_MS = 30_000;
 const MAX_QUARANTINE_MS = 15 * 60_000;
 
@@ -146,10 +161,14 @@ export function recordFailure(providerId: ProviderId, modelId: string, kind: Err
     kind !== 'rate_limit' && kind !== 'bad_request' && kind !== 'context_length' && kind !== 'model_not_found';
   const failures = countsAsBroken ? current.consecutiveFailures + 1 : current.consecutiveFailures;
 
+  // Un modelo que no ha producido nada se aparta ya; uno que falla por otra causa tiene
+  // margen, porque ahí un fallo suelto sí suele ser pasajero.
+  const dead = DEAD_KINDS.has(kind);
+  const umbralCuarentena = dead ? 1 : FAILURES_TO_QUARANTINE;
+
   let quarantinedUntil = current.quarantinedUntil;
-  if (countsAsBroken && failures >= FAILURES_TO_QUARANTINE) {
-    // Backoff exponencial a partir del tercer fallo consecutivo.
-    const extra = failures - FAILURES_TO_QUARANTINE;
+  if (countsAsBroken && failures >= umbralCuarentena) {
+    const extra = failures - umbralCuarentena;
     const wait = Math.min(BASE_QUARANTINE_MS * 2 ** extra, MAX_QUARANTINE_MS);
     quarantinedUntil = new Date(Date.now() + wait).toISOString();
   }
@@ -162,7 +181,7 @@ export function recordFailure(providerId: ProviderId, modelId: string, kind: Err
     quarantinedUntil,
   });
 
-  if (countsAsBroken && failures >= FAILURES_TO_RETIRE) {
+  if (countsAsBroken && failures >= (dead ? FAILURES_TO_RETIRE_DEAD : FAILURES_TO_RETIRE)) {
     setModelEnabled(providerId, modelId, false);
   }
 }

@@ -89,6 +89,8 @@ export type ErrorKind =
   | 'payment_required'
   | 'server'
   | 'timeout'
+  /** Respondió 200 y no generó ni un token: lo anuncia y no funciona. */
+  | 'no_output'
   | 'network'
   | 'bad_request'
   | 'context_length'

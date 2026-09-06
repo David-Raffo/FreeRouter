@@ -532,6 +532,15 @@ Aprendido con tráfico real, no en teoría:
   ciertos clientes y responden 401 aunque la clave sea válida. Antes de dar la clave
   por muerta se revalida; si está bien, se desactiva **solo ese modelo**. Sin esta
   comprobación un modelo raro tumbaría a los otros 17 del proveedor.
+- **Un modelo que no genera ni un token** —se agota el plazo del primer token, o
+  responde 200 y no escribe nada— sale del enrutado **al primer fallo** y se retira al
+  tercero. No es un bache: el proveedor lo anuncia y no funciona, y NVIDIA sola publica
+  decenas así. Con el trato normal hacían falta ocho fallos y, entre cuarentena y
+  cuarentena, eso son horas durante las cuales el modelo sigue apareciendo como activo y
+  puede recibir tráfico real.
+- **Un 5xx suelto conserva su margen**: tres fallos para la cuarentena y ocho para
+  retirarlo. Ahí un fallo aislado suele ser pasajero de verdad, y retirar por eso
+  perdería modelos que funcionan.
 - **Continuar la cadena**: *cualquier* error deja pasar al siguiente candidato, un 400
   incluido. En teoría un 400 es culpa de la petición y fallaría igual en todos; en la
   práctica no lo es —OpenCode devuelve 400 con «Upstream request failed: Model is

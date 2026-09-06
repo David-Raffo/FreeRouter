@@ -515,6 +515,62 @@ describe('cadena de failover', () => {
 });
 
 describe('salud', () => {
+  /** Deja un modelo en el catálogo para poder mirar si acaba retirado. */
+  function conModelo(id: string): void {
+    saveProviderKey('nvidia', 'clave', { rpm: 30, tpm: null, rpd: null, tpd: null });
+    replaceModels('nvidia', [
+      {
+        providerId: 'nvidia',
+        id,
+        displayName: id,
+        contextLength: 8192,
+        maxCompletionTokens: null,
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+        supportsTools: true,
+        qualityScore: 20,
+        qualitySource: 'measured',
+        requiresIdentifiedAccount: false,
+      },
+    ]);
+  }
+  const sigueActivo = (id: string): boolean => listModels(false).find((m) => m.id === id)?.enabled === true;
+
+  it('un modelo que no genera ni un token sale del enrutado al primer fallo', () => {
+    // Con el trato normal hacían falta ocho fallos y, entre cuarentena y cuarentena, eso
+    // son horas. Durante todo ese rato el modelo sale como activo y puede recibir
+    // tráfico real, que es lo grave. NVIDIA anuncia decenas de modelos así.
+    conModelo('mudo');
+    recordFailure('nvidia', 'mudo', 'no_output', 'El modelo no generó ningún token');
+    assert.equal(isQuarantined(healthOf('nvidia', 'mudo')), true, 'no puede seguir recibiendo tráfico');
+    assert.equal(sigueActivo('mudo'), true, 'pero todavía no se retira: podría ser un bache');
+  });
+
+  it('y se retira al tercero, no al octavo', () => {
+    conModelo('mudo');
+    for (let i = 0; i < 2; i += 1) recordFailure('nvidia', 'mudo', 'no_output', 'nada');
+    assert.equal(sigueActivo('mudo'), true);
+    recordFailure('nvidia', 'mudo', 'no_output', 'nada');
+    assert.equal(sigueActivo('mudo'), false, 'tres veces sin generar nada es suficiente');
+  });
+
+  it('agotar el plazo del primer token cuenta igual', () => {
+    conModelo('lentisimo');
+    for (let i = 0; i < 3; i += 1) recordFailure('nvidia', 'lentisimo', 'timeout', 'Sin el primer token tras 25 s');
+    assert.equal(sigueActivo('lentisimo'), false);
+  });
+
+  it('un 5xx pasajero conserva su margen: ni cuarentena al primero ni retirada al tercero', () => {
+    // La vía rápida es solo para «no produce nada». Un error de servidor suelto suele
+    // serlo de verdad, y retirar por eso perdería modelos que funcionan.
+    conModelo('inestable');
+    recordFailure('nvidia', 'inestable', 'server', 'boom');
+    assert.equal(isQuarantined(healthOf('nvidia', 'inestable')), false);
+    for (let i = 0; i < 2; i += 1) recordFailure('nvidia', 'inestable', 'server', 'boom');
+    assert.equal(isQuarantined(healthOf('nvidia', 'inestable')), true, 'al tercero sí');
+    assert.equal(sigueActivo('inestable'), true, 'pero no se retira hasta el octavo');
+  });
+
   it('tres fallos consecutivos ponen el modelo en cuarentena', () => {
     recordFailure('groq', 'm', 'server', 'boom');
     recordFailure('groq', 'm', 'server', 'boom');

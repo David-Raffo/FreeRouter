@@ -222,7 +222,7 @@ export async function measureModel(
   }
 
   if (firstTokenAt === null) {
-    return { error: 'El modelo no generó ningún token', kind: 'server' };
+    return { error: 'El modelo no generó ningún token', kind: 'no_output' };
   }
 
   const streamEndAt = performance.now();
