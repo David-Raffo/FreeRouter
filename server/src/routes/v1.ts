@@ -18,6 +18,7 @@ import { explainNoCandidates, route } from '../routing/select.js';
 import { estimateTokens, requestUsesTools } from '../routing/tokens.js';
 import { getSetting } from '../db.js';
 import { findApiKey, logRequest, touchApiKey, type ApiKeyRecord, type AttemptDetail } from '../store.js';
+import { renderPromptParts } from './prompt-log.js';
 import {
   toChatRequest,
   toNamedSse,
@@ -52,32 +53,10 @@ function measureTtftEnabled(): boolean {
   return getSetting('measure_ttft') !== 'false';
 }
 
-/** Renderiza los mensajes de la petición como texto plano legible. */
+/** Renderiza el prompt para el historial, o `null` si el registro está apagado. */
 function renderPrompt(body: Record<string, unknown>): string | null {
   if (!contentLoggingEnabled()) return null;
-  const messages = Array.isArray(body.messages) ? body.messages : [];
-  const lines: string[] = [];
-
-  for (const raw of messages) {
-    const message = raw as { role?: string; content?: unknown };
-    const role = message.role ?? 'user';
-    let text: string;
-    if (typeof message.content === 'string') {
-      text = message.content;
-    } else if (Array.isArray(message.content)) {
-      text = message.content
-        .map((part) => {
-          const typed = part as { type?: string; text?: string };
-          if (typed.type === 'text') return typed.text ?? '';
-          return `[${typed.type ?? 'adjunto'}]`;
-        })
-        .join('');
-    } else {
-      text = '';
-    }
-    lines.push(`${role}: ${text}`);
-  }
-  return lines.join('\n\n');
+  return renderPromptParts(Array.isArray(body.messages) ? body.messages : []);
 }
 
 function responseText(payload: Record<string, unknown>): string | null {

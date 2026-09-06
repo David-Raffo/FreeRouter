@@ -350,7 +350,7 @@ export function pruneOldUsage(): void {
 // -------------------------------------------------------------------------- registro
 
 /** Tope de texto guardado por petición. Acota el crecimiento de la base de datos. */
-const LOG_TEXT_LIMIT = 4000;
+export const LOG_TEXT_LIMIT = 4000;
 /** Peticiones que se conservan en el historial. */
 const LOG_KEEP = 500;
 

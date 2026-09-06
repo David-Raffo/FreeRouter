@@ -664,6 +664,16 @@ una petición. Los tres casos:
 - Si el stream no trae `usage`, los tokens se estiman por longitud en vez de perderse:
   si no, se quedarían sin descontar de la cuota diaria y sin tok/s.
 
+El prompt se guarda **separado por mensajes**, no como un bloque de texto, y en el panel
+cada rol va en su propio recuadro con el de sistema plegado. Un prompt de sistema largo
+tapaba lo único que se suele querer mirar, que es lo que preguntó el usuario.
+
+El reparto del espacio va **desde el final**, y eso arregla algo más que la presentación:
+antes se pegaba todo y se cortaba a 4.000 caracteres desde el principio, así que con un
+sistema más largo que eso **el mensaje del usuario no llegaba a guardarse**. Ahora lo
+último que se dijo se conserva entero y lo que sobra se lo lleva el sistema, marcado como
+recortado. Las peticiones anteriores a este cambio se siguen enseñando tal cual.
+
 Guardar prompts y respuestas está activado por defecto —es lo que hace útil el
 historial— pero son datos sensibles que quedan en la base de datos local. Se puede
 apagar con la casilla «Guardar prompts y respuestas», y «Purgar contenido» borra los

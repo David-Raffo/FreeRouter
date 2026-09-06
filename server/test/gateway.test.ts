@@ -25,6 +25,8 @@ import {
 import type { ModelInfo, ProviderId } from '../src/providers/types.js';
 import { buildServer } from '../src/index.js';
 import { measureModel, warmupAll } from '../src/routing/probe.js';
+import { renderPromptParts } from '../src/routes/prompt-log.js';
+import { LOG_TEXT_LIMIT } from '../src/store.js';
 import { allHealth } from '../src/routing/health.js';
 import { getProvider } from '../src/providers/registry.js';
 import { refreshProviderModels } from '../src/providers/connect.js';
@@ -440,6 +442,50 @@ describe('gateway', () => {
 
     assert.equal(response.statusCode, 400);
     assert.match(String(response.json().error.message), /temperature/);
+  });
+
+  it('un prompt de sistema enorme no se come el mensaje del usuario', async () => {
+    // Era el fallo de verdad, no solo de presentación: el prompt se pegaba entero y se
+    // cortaba a 4.000 caracteres desde el principio, así que con un sistema más largo
+    // que eso la pregunta del usuario no llegaba a guardarse nunca.
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    const sistema = 'Eres un asistente. '.repeat(600); // ~11.400 caracteres
+    assert.ok(sistema.length > 10_000);
+
+    await chat(app, seedKey('calidad'), {
+      messages: [
+        { role: 'system', content: sistema },
+        { role: 'user', content: '¿Cuál es la capital de Francia?' },
+      ],
+    });
+
+    const detail = requestDetail(Number(recentRequests(1)[0]?.id));
+    const guardado = JSON.parse(String(detail?.prompt)) as {
+      parts: Array<{ role: string; text: string; trimmed?: boolean }>;
+    };
+
+    const usuario = guardado.parts.find((p) => p.role === 'user');
+    assert.equal(usuario?.text, '¿Cuál es la capital de Francia?', 'la pregunta se guarda entera');
+
+    const sistemaGuardado = guardado.parts.find((p) => p.role === 'system');
+    assert.equal(sistemaGuardado?.trimmed, true, 'y el sistema queda marcado como recortado');
+    assert.ok(sistemaGuardado!.text.length > 1000, 'pero se guarda lo que cabe de él');
+  });
+
+  it('el prompt guardado siempre es JSON válido y cabe en la base de datos', () => {
+    // Se guarda como JSON, así que un recorte a ciegas lo dejaría ilegible. Con muchos
+    // mensajes largos, los escapes y las llaves se suman al texto.
+    const largos = Array.from({ length: 30 }, (_, i) => ({
+      role: i % 2 ? 'user' : 'assistant',
+      content: `mensaje ${i} con saltos
+y comillas "así" `.repeat(40),
+    }));
+
+    const payload = renderPromptParts(largos);
+    assert.ok(payload.length <= LOG_TEXT_LIMIT, `ocupa ${payload.length} de ${LOG_TEXT_LIMIT}`);
+    const parsed = JSON.parse(payload) as { parts: Array<{ role: string; text: string }> };
+    assert.ok(parsed.parts.length > 0);
+    assert.equal(parsed.parts[parsed.parts.length - 1]?.role, 'user', 'lo último se conserva');
   });
 
   it('cuando fallan todos, la cronología los recoge igual', async () => {

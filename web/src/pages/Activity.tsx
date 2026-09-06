@@ -210,7 +210,7 @@ function RowPair({
                 <Timeline attempts={detail?.timeline ?? []} routerMs={detail?.routerMs ?? null} />
                 {row.has_content ? (
                   <>
-                    <Block title="Prompt" text={detail?.prompt} />
+                    <Prompt raw={detail?.prompt ?? null} />
                     <Block title="Respuesta" text={detail?.response} />
                   </>
                 ) : (
@@ -329,6 +329,77 @@ function Timeline({ attempts, routerMs }: { attempts: AttemptDetail[]; routerMs:
   );
 }
 
+interface PromptPart {
+  role: string;
+  text: string;
+  trimmed?: boolean;
+}
+
+/** Etiqueta legible de cada rol; lo que no conozcamos se muestra tal cual. */
+const ROLES: Record<string, string> = {
+  system: 'Sistema',
+  developer: 'Sistema (developer)',
+  user: 'Usuario',
+  assistant: 'Asistente',
+  tool: 'Herramienta',
+};
+
+/**
+ * El prompt, separado por mensajes.
+ *
+ * Un prompt de sistema largo tapaba lo único que se suele querer mirar, que es lo que
+ * preguntó el usuario. Ahora cada rol va en su bloque y el sistema arranca plegado: sigue
+ * estando a un clic, pero deja de estorbar.
+ *
+ * Las peticiones anteriores a este cambio se guardaron como un bloque de texto, así que
+ * si no es JSON se enseña tal cual en vez de fallar.
+ */
+function Prompt({ raw }: { raw: string | null }) {
+  if (!raw) return <Block title="Prompt" text={raw} />;
+
+  let parts: PromptPart[] = [];
+  let omitted = 0;
+  try {
+    const parsed = JSON.parse(raw) as { parts?: PromptPart[]; omitted?: number };
+    if (!Array.isArray(parsed.parts)) throw new Error('formato viejo');
+    parts = parsed.parts;
+    omitted = parsed.omitted ?? 0;
+  } catch {
+    return <Block title="Prompt" text={raw} />;
+  }
+
+  // Lo que de verdad se quiere ver: el último mensaje que no es del asistente.
+  const destacado = parts.map((p) => p.role).lastIndexOf('user');
+
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {omitted > 0 && (
+        <span className="dim" style={{ fontSize: 12 }}>
+          {omitted} mensaje{omitted === 1 ? '' : 's'} anterior{omitted === 1 ? '' : 'es'} no cabía
+          {omitted === 1 ? '' : 'n'} y no se guardó{omitted === 1 ? '' : 'n'}.
+        </span>
+      )}
+      {parts.map((part, index) => {
+        const titulo = ROLES[part.role] ?? part.role;
+        const etiqueta = part.trimmed ? `${titulo} (recortado)` : titulo;
+        // El sistema se pliega salvo que sea lo único que hay.
+        const plegable = part.role === 'system' || part.role === 'developer';
+        if (plegable && parts.length > 1) {
+          return (
+            <details key={index}>
+              <summary className="dim" style={{ cursor: 'pointer', marginBottom: 4 }}>
+                {etiqueta} · {part.text.length} caracteres
+              </summary>
+              <Block title="" text={part.text} />
+            </details>
+          );
+        }
+        return <Block key={index} title={etiqueta} text={part.text} highlight={index === destacado} />;
+      })}
+    </div>
+  );
+}
+
 /** Mismo aspecto que los bloques de prompt y respuesta, pero para texto del proveedor. */
 const messageBlock: React.CSSProperties = {
   margin: 0,
@@ -343,19 +414,29 @@ const messageBlock: React.CSSProperties = {
   overflowY: 'auto',
 };
 
-function Block({ title, text }: { title: string; text: string | null | undefined }) {
+function Block({
+  title,
+  text,
+  highlight,
+}: {
+  title: string;
+  text: string | null | undefined;
+  highlight?: boolean;
+}) {
   return (
     <div>
-      <div className="dim" style={{ marginBottom: 4 }}>
-        {title}
-      </div>
+      {title !== '' && (
+        <div className="dim" style={{ marginBottom: 4 }}>
+          {title}
+        </div>
+      )}
       <pre
         className="mono"
         style={{
           margin: 0,
           padding: 10,
           background: 'var(--surface)',
-          border: '1px solid var(--border)',
+          border: `1px solid ${highlight ? 'var(--accent, #6c8cff)' : 'var(--border)'}`,
           borderRadius: 8,
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
