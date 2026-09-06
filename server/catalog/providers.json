@@ -106,6 +106,7 @@
       "consoleUrl": "https://cloud.sambanova.ai/apis",
       "failoverRank": 3,
       "quotaScope": "account",
+      "rateLimitPenaltyFactor": 2,
       "defaultLimits": {
         "rpm": 10,
         "tpm": null,
@@ -129,6 +130,7 @@
       "consoleUrl": "https://ollama.com/settings/keys",
       "failoverRank": 4,
       "quotaScope": "account",
+      "rateLimitPenaltyFactor": 2,
       "defaultLimits": {
         "rpm": 20,
         "tpm": null,
@@ -177,6 +179,7 @@
       "consoleUrl": "https://opencode.ai/auth",
       "failoverRank": 4,
       "quotaScope": "account",
+      "rateLimitPenaltyFactor": 2,
       "defaultLimits": {
         "rpm": 20,
         "tpm": null,
@@ -247,6 +250,7 @@
       "consoleUrl": "https://endpoints.ai.cloud.ovh.net/",
       "failoverRank": 5,
       "quotaScope": "account",
+      "rateLimitPenaltyFactor": 2,
       "defaultLimits": {
         "rpm": 60,
         "tpm": null,
@@ -292,6 +296,7 @@
       "consoleUrl": "https://z.ai/manage-apikey/apikey-list",
       "failoverRank": 6,
       "quotaScope": "account",
+      "rateLimitPenaltyFactor": 2,
       "defaultLimits": {
         "rpm": 20,
         "tpm": null,
@@ -339,6 +344,7 @@
       "consoleUrl": "https://llm7.io/",
       "failoverRank": 7,
       "quotaScope": "account",
+      "rateLimitPenaltyFactor": 2,
       "defaultLimits": {
         "rpm": 10,
         "tpm": null,
@@ -508,6 +514,7 @@
       "consoleUrl": "https://modelscope.cn/my/myaccesstoken",
       "failoverRank": 2,
       "quotaScope": "account",
+      "rateLimitPenaltyFactor": 2,
       "defaultLimits": {
         "rpm": 20,
         "tpm": null,

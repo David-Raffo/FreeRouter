@@ -274,11 +274,20 @@ peticiones diarias, porque allí **las fallidas también cuentan**. Con un casti
 en cambio, un pico de un minuto te deja sin tu mejor modelo durante horas. Doblar empieza
 barato y se pone caro solo con quien demuestra estarlo.
 
-**El castigo se multiplica donde equivocarse sale caro.** Cada proveedor lleva su
-`rateLimitPenaltyFactor` en `providers.json`: 1 por defecto, 4 en OpenRouter, que es
-donde un reintento cuesta siete veces más tiempo y encima gasta cuota diaria. Es un
-número del catálogo, no del código: si mañana deja de ser caro, se cambia ahí y el
-enrutado no se entera.
+**El castigo se multiplica donde equivocarse sale caro, o donde vamos a ciegas.** Cada
+proveedor lleva su `rateLimitPenaltyFactor` en `providers.json`, y hay dos motivos para
+subirlo:
+
+- **Reintentar sale caro.** OpenRouter va a 4: un fallo suyo tarda siete veces más que
+  uno de Groq y encima gasta una de las 50 peticiones diarias.
+- **No conocemos el límite.** Siete proveedores no lo publican (SambaNova, OpenCode, OVH,
+  Z.AI, LLM7, Ollama) o tienen uno que no cabe en este catálogo (el tope por modelo de
+  ModelScope). Ahí la cuota preventiva es una conjetura y el 429 es la única señal real:
+  llegar a él ya significa que la estimación falló, así que van a 2. Con Groq no hace
+  falta, porque publica su cuota en cabeceras y el 429 se evita antes de provocarlo.
+
+Es un número del catálogo, no del código: si mañana un proveedor publica sus límites, se
+baja ahí y el enrutado no se entera.
 
 | 429 seguidos | Groq (×1) | OpenRouter (×4) |
 | --- | --- | --- |

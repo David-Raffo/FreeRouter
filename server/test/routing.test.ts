@@ -330,6 +330,20 @@ describe('castigo tras un 429', () => {
     assert.ok(openrouter > MINUTO * 3.5 && openrouter <= MINUTO * 4, `esperaba ~4 min, fue ${openrouter}`);
   });
 
+  it('los proveedores cuyo límite no conocemos castigan el doble', () => {
+    // Con Groq no hace falta: publica su cuota en cabeceras, así que el 429 se evita
+    // antes de provocarlo. Donde el límite no se publica —o no cabe en este catálogo,
+    // como el tope por modelo de ModelScope— el 429 es la única señal que hay, y llegar
+    // a él significa que la estimación preventiva ya falló. Ahí conviene esperar más.
+    for (const id of ['sambanova', 'opencode', 'ovh', 'zai', 'llm7', 'modelscope', 'ollama']) {
+      assert.equal(getProvider(id)?.rateLimitPenaltyFactor, 2, `${id} debería castigar el doble`);
+    }
+    // Y donde sí lo conocemos, el castigo normal.
+    for (const id of ['groq', 'google', 'mistral', 'requesty']) {
+      assert.equal(getProvider(id)?.rateLimitPenaltyFactor, 1, `${id} no necesita castigo extra`);
+    }
+  });
+
   it('el multiplicador de OpenRouter sale del catálogo, no del código', () => {
     // Un proveedor es datos: si mañana OpenRouter deja de ser caro, se cambia el número
     // en providers.json y nadie toca el enrutado.
