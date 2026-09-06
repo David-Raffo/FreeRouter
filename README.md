@@ -1,6 +1,6 @@
 # FreeRouter
 
-**Un solo endpoint compatible con OpenAI por delante de 21 proveedores de inferencia
+**Un solo endpoint compatible con OpenAI por delante de 22 proveedores de inferencia
 gratuita.** Tú pones las claves; él decide qué modelo usar en cada petición, respeta las
 cuotas de cada proveedor para no provocar 429 y hace failover cuando alguno falla.
 
@@ -317,6 +317,7 @@ cuenta— la aportan en `src/providers/overrides.ts`.
 | **OpenCode Zen** | Unos pocos modelos gratuitos | ⚠️ Algunos permiten usar tus datos para entrenar |
 | **Requesty** | ~200 req/día | Solo se enrutan sus modelos a precio cero |
 | **OpenRouter** | 50 req/día (1.000 con 10 $ gastados) | Los fallos también gastan cuota |
+| **ModelScope** | 2.000 req/día por cuenta, reinicio cada 24 h | Más cuota diaria que Groq. Plataforma china: peor latencia desde Europa |
 | **Pollinations** | 12 req/min con registro gratuito | 280 modelos de texto de 394; el resto son de imagen y audio |
 | **Cohere** | 1.000 llamadas/mes · 20 req/min | Claves de prueba: evaluación, no producción |
 | **Hugging Face** | 0,10 $/mes en crédito que se renueva | Da para poco; va casi al final de la cadena |
@@ -718,7 +719,7 @@ por la misma razón: un doble más permisivo que la realidad no prueba nada.
 .
 ├── server/                  # Node 22 · TypeScript · Fastify 5 · better-sqlite3
 │   ├── catalog/             # Datos editables a mano, sin recompilar
-│   │   ├── providers.json   #   Los 21 proveedores: URL, formato de clave, límites
+│   │   ├── providers.json   #   Los 22 proveedores: URL, formato de clave, límites
 │   │   ├── capabilities.json#   Capacidades de los que no las publican
 │   │   ├── limits.json      #   Semilla de cuotas
 │   │   └── quality.json     #   Intelligence Index cacheado

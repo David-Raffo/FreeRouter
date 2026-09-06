@@ -2,7 +2,7 @@
   "_meta": {
     "indexVersion": "Artificial Analysis Intelligence Index v4.2",
     "measuredAt": "2026-09-04",
-    "syncedAt": "2026-09-05T12:12:25.808Z",
+    "syncedAt": "2026-09-06T09:42:00.220Z",
     "attribution": "Model quality data by Artificial Analysis (https://artificialanalysis.ai/)",
     "note": "`scores` son valores REALES del Intelligence Index sincronizados desde Artificial Analysis, con las claves ya normalizadas. Las versiones del índice NO son comparables entre sí (de la v4.1 a la v4.2 todo bajó entre 6 y 11 puntos), así que al cambiar de versión la tabla se reemplaza en vez de fusionarse. `heuristics` son estimaciones por familia para los modelos que el índice no evalúa, calibradas con la mediana real de cada tramo en la versión vigente para que un modelo estimado no pueda colarse por delante de uno medido."
   },

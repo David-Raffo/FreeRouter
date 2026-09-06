@@ -499,6 +499,29 @@
       "publicModelList": true,
       "defaultContext": 32768,
       "verifiedOn": "2026-09-06"
+    },
+    {
+      "id": "modelscope",
+      "label": "ModelScope (Alibaba)",
+      "baseUrl": "https://api-inference.modelscope.cn/v1",
+      "keyHint": "ms-…",
+      "consoleUrl": "https://modelscope.cn/my/myaccesstoken",
+      "failoverRank": 2,
+      "quotaScope": "account",
+      "defaultLimits": {
+        "rpm": 20,
+        "tpm": null,
+        "rpd": 2000,
+        "tpd": null
+      },
+      "freeTier": {
+        "renewing": true,
+        "note": "2.000 llamadas al dia por cuenta, contadas entre todos los modelos, que se reinician cada 24 h sin acumular. Es mas de lo que da Groq. Encima hay un tope por modelo, entre 200 y 500 al dia segun disponibilidad, que no se puede expresar en este catalogo: aqui se declara el de cuenta, que es el que manda casi siempre, y el del modelo aparece como 429 y lo absorbe el castigo creciente. Su listado publico devuelve 50 modelos con metadatos minimos —solo id— asi que se usa el contexto por defecto. Registro en modelscope.cn, plataforma china: la latencia desde Europa es peor que la de un proveedor local."
+      },
+      "freeOnly": false,
+      "publicModelList": true,
+      "defaultContext": 32768,
+      "verifiedOn": "2026-09-06"
     }
   ]
 }
