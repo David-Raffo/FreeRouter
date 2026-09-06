@@ -431,6 +431,74 @@
       ],
       "defaultContext": 8192,
       "verifiedOn": "2026-09-04"
+    },
+    {
+      "id": "pollinations",
+      "label": "Pollinations",
+      "baseUrl": "https://gen.pollinations.ai/v1",
+      "keyHint": "token de auth.pollinations.ai",
+      "consoleUrl": "https://auth.pollinations.ai/",
+      "failoverRank": 7,
+      "quotaScope": "account",
+      "defaultLimits": {
+        "rpm": 12,
+        "tpm": null,
+        "rpd": null,
+        "tpd": null
+      },
+      "freeTier": {
+        "renewing": true,
+        "note": "Registro gratuito (tier «seed»): una peticion cada 5 s, de ahi el limite de 12/min. Comprobado el 2026-09-06: el tier anonimo que anuncian sus docs ya no sirve —la primera peticion pasa y las siguientes devuelven 401—, asi que hace falta token aunque sea gratis. Su campo `pricing` va en una moneda propia, «pollen», y ningun modelo esta a cero, por eso aqui no se filtra por precio. Publica 394 modelos de los que solo 280 son de texto; el resto (imagen, audio, video, 3D, realtime) se descartan por su campo `category`."
+      },
+      "freeOnly": false,
+      "publicModelList": true,
+      "defaultContext": 32768,
+      "verifiedOn": "2026-09-06"
+    },
+    {
+      "id": "cohere",
+      "label": "Cohere",
+      "baseUrl": "https://api.cohere.ai/compatibility/v1",
+      "keyHint": "clave de prueba de Cohere",
+      "consoleUrl": "https://dashboard.cohere.com/api-keys",
+      "failoverRank": 6,
+      "quotaScope": "account",
+      "defaultLimits": {
+        "rpm": 20,
+        "tpm": null,
+        "rpd": 33,
+        "tpd": null
+      },
+      "freeTier": {
+        "renewing": true,
+        "note": "Clave de prueba: 1.000 llamadas al mes que se renuevan, y 20 por minuto en los modelos de chat. El limite diario de 33 no lo impone Cohere: lo ponemos nosotros para repartir el mes, porque su cuota es mensual y sin un tope diario se gastaria entera en una tarde. Sus claves de prueba son para evaluar, no para produccion ni uso comercial. El endpoint es el compatible con OpenAI, distinto de su API nativa."
+      },
+      "freeOnly": false,
+      "defaultContext": 128000,
+      "verifiedOn": "2026-09-06"
+    },
+    {
+      "id": "huggingface",
+      "label": "Hugging Face Inference Providers",
+      "baseUrl": "https://router.huggingface.co/v1",
+      "keyHint": "hf_…",
+      "consoleUrl": "https://huggingface.co/settings/tokens",
+      "failoverRank": 9,
+      "quotaScope": "account",
+      "defaultLimits": {
+        "rpm": 30,
+        "tpm": null,
+        "rpd": null,
+        "tpd": null
+      },
+      "freeTier": {
+        "renewing": true,
+        "note": "0,10 $ al mes en creditos que se renuevan solos y se aplican antes de cualquier cobro. Es poco: da para unas pocas peticiones diarias en modelos baratos, asi que va casi al final de la cadena. Enruta a otros proveedores por debajo, y el precio y el contexto viven dentro de un array `providers` por modelo que este catalogo no sabe leer, de modo que se usa el contexto por defecto y no se detecta tool use. Si se agota el credito, las peticiones fallan hasta el mes siguiente salvo que compres mas."
+      },
+      "freeOnly": false,
+      "publicModelList": true,
+      "defaultContext": 32768,
+      "verifiedOn": "2026-09-06"
     }
   ]
 }

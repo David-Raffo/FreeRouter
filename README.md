@@ -1,6 +1,6 @@
 # FreeRouter
 
-**Un solo endpoint compatible con OpenAI por delante de 18 proveedores de inferencia
+**Un solo endpoint compatible con OpenAI por delante de 21 proveedores de inferencia
 gratuita.** Tú pones las claves; él decide qué modelo usar en cada petición, respeta las
 cuotas de cada proveedor para no provocar 429 y hace failover cuando alguno falla.
 
@@ -317,6 +317,9 @@ cuenta— la aportan en `src/providers/overrides.ts`.
 | **OpenCode Zen** | Unos pocos modelos gratuitos | ⚠️ Algunos permiten usar tus datos para entrenar |
 | **Requesty** | ~200 req/día | Solo se enrutan sus modelos a precio cero |
 | **OpenRouter** | 50 req/día (1.000 con 10 $ gastados) | Los fallos también gastan cuota |
+| **Pollinations** | 12 req/min con registro gratuito | 280 modelos de texto de 394; el resto son de imagen y audio |
+| **Cohere** | 1.000 llamadas/mes · 20 req/min | Claves de prueba: evaluación, no producción |
+| **Hugging Face** | 0,10 $/mes en crédito que se renueva | Da para poco; va casi al final de la cadena |
 | **Cerebras** | ⚠️ Ya no es gratis | Trial de 5 $ que caduca |
 | **Scaleway** | ⚠️ 1M tokens de bienvenida | Crédito que se agota |
 | **Alibaba DashScope** | ⚠️ 1M tokens/modelo, 90 días | Crédito con caducidad |
@@ -324,6 +327,25 @@ cuenta— la aportan en `src/providers/overrides.ts`.
 
 Los marcados con ⚠️ **no tienen cuota que se renueve**: son créditos que se agotan y
 luego facturan. El panel lo avisa en su tarjeta antes de que conectes la clave.
+
+**Los tres últimos se verificaron el 2026-09-06** llamando a sus APIs, no leyendo listas.
+Merece la pena contar qué se descartó, porque casi todo lo que circula como «API gratuita»
+no lo es:
+
+- **GitHub Models está retirado** desde el 30 de julio de 2026, y las listas curadas de
+  «APIs gratuitas permanentes» seguían recomendándolo.
+- **DeepSeek, Fireworks y Together** dan crédito de bienvenida de un solo uso, no cuota
+  que se renueve. Es la categoría ⚠️ y ya hay bastantes.
+- **El tier anónimo de Pollinations ya no existe** en la práctica pese a lo que dicen sus
+  propios documentos: la primera petición pasa y las siguientes devuelven 401. Por eso
+  aquí figura con token, que sigue siendo gratuito.
+- **AI Horde** es gratis de verdad, pero su API es asíncrona, propia y servida por GPUs
+  de voluntarios: no es compatible con OpenAI y su latencia es impredecible, justo lo
+  que envenena a un router que puntúa por velocidad.
+- **DuckDuckGo AI Chat, Cloudflare AI Playground, UncloseAI y similares** son endpoints
+  de aplicaciones de consumo obtenidos por ingeniería inversa, no APIs ofrecidas. Igual
+  que proxyficar GitHub Copilot o Codex, que son productos de suscripción. Aquí no
+  entran: se rompen sin aviso y usarlos va contra las condiciones de quien los paga.
 
 Lo que se comprobó de cada uno el 2026-09-04: que la URL responde y que el listado de
 modelos funciona. Los límites exactos cambian a menudo y varios no los publican, así que
@@ -696,7 +718,7 @@ por la misma razón: un doble más permisivo que la realidad no prueba nada.
 .
 ├── server/                  # Node 22 · TypeScript · Fastify 5 · better-sqlite3
 │   ├── catalog/             # Datos editables a mano, sin recompilar
-│   │   ├── providers.json   #   Los 18 proveedores: URL, formato de clave, límites
+│   │   ├── providers.json   #   Los 21 proveedores: URL, formato de clave, límites
 │   │   ├── capabilities.json#   Capacidades de los que no las publican
 │   │   ├── limits.json      #   Semilla de cuotas
 │   │   └── quality.json     #   Intelligence Index cacheado

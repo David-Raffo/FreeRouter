@@ -84,10 +84,25 @@ function needsIdentifiedAccount(model: Raw): boolean {
  * (LLM7 usa `model_type`), y aprovecharlo es mucho más fiable que adivinarlo por el
  * nombre: enrutar un chat a un generador de imágenes o de vídeo falla siempre.
  */
-const NON_CHAT_TYPES = new Set(['image', 'video', 'audio', 'embedding', 'embeddings', 'rerank', 'moderation', 'tts', 'stt']);
+const NON_CHAT_TYPES = new Set([
+  'image',
+  'video',
+  'audio',
+  'embedding',
+  'embeddings',
+  'rerank',
+  'moderation',
+  'tts',
+  'stt',
+  // Pollinations publica también estos dos, y ninguno atiende /chat/completions.
+  '3d',
+  'realtime',
+]);
 
 function isChatType(model: Raw): boolean {
-  for (const path of ['model_type', 'type', 'modality']) {
+  // `category` lo usa Pollinations, que en un mismo listado mezcla 280 modelos de texto
+  // con 114 de imagen, audio, vídeo, 3D y realtime.
+  for (const path of ['model_type', 'type', 'modality', 'category']) {
     const value = dig(model, path);
     if (typeof value === 'string' && NON_CHAT_TYPES.has(value.toLowerCase())) return false;
   }
@@ -98,12 +113,15 @@ function isChatType(model: Raw): boolean {
 function detectTools(model: Raw): boolean | null {
   const supported = dig(model, 'supported_parameters');
   if (Array.isArray(supported)) return supported.includes('tools');
-  for (const path of ['capabilities.tools', 'supports_tools', 'capabilities.function_calling', 'tool_call']) {
+  for (const path of ['capabilities.tools', 'supports_tools', 'capabilities.function_calling', 'tool_call', 'tools']) {
     const value = dig(model, path);
     if (typeof value === 'boolean') return value;
   }
   const capabilities = dig(model, 'capabilities');
-  if (Array.isArray(capabilities)) return capabilities.includes('tools') || capabilities.includes('function_calling');
+  if (Array.isArray(capabilities)) {
+    // `tool_calling` es como lo llama Pollinations.
+    return capabilities.includes('tools') || capabilities.includes('function_calling') || capabilities.includes('tool_calling');
+  }
   return null;
 }
 
