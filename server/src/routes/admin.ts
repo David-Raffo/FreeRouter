@@ -200,6 +200,39 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     },
   );
 
+  /**
+   * Activar o desactivar un modelo. El id va en el CUERPO, no en la ruta.
+   *
+   * Iba en la ruta y fallaba para media docena de proveedores. Los ids de modelo llevan
+   * barras —`deepseek-ai/deepseek-v4-pro-0813`, `@cf/meta/llama-3.2-3b-instruct`— y
+   * aunque el panel las escapa como `%2F`, casi cualquier proxy inverso las vuelve a
+   * convertir en barras de verdad antes de reenviar: Apache lo hace por defecto
+   * (`AllowEncodedSlashes Off`), y nginx, Caddy y compañía normalizan la ruta por su
+   * cuenta. Fastify recibía entonces `/api/models/deepseek-ai/deepseek-v4-pro-0813/enabled`,
+   * que no encaja con ninguna ruta, y devolvía 404. Desde el navegador el botón
+   * simplemente no hacía nada.
+   *
+   * En el cuerpo no hay nada que normalizar, así que deja de depender de qué haya
+   * delante. Es también la razón por la que los ids no deberían viajar nunca en un
+   * segmento de ruta: además de `/` llevan `@` y `:`.
+   */
+  app.post<{ Body: { providerId?: string; modelId?: string; enabled?: boolean } }>(
+    '/api/models/enabled',
+    async (request, reply) => {
+      const providerId = request.body?.providerId;
+      const modelId = request.body?.modelId;
+      if (!providerId || !isProviderId(providerId)) return reply.code(400).send({ error: 'providerId inválido.' });
+      if (!modelId) return reply.code(400).send({ error: 'Falta modelId.' });
+      setModelEnabled(providerId, modelId, request.body?.enabled !== false);
+      return reply.send({ ok: true });
+    },
+  );
+
+  /**
+   * La ruta antigua, conservada a propósito. Un navegador con el panel viejo en caché
+   * sigue llamando aquí; quitarla lo dejaría peor que antes, roto también para los ids
+   * sin barra, que sí funcionaban.
+   */
   app.post<{ Params: { id: string }; Body: { providerId?: string; enabled?: boolean } }>(
     '/api/models/:id/enabled',
     async (request, reply) => {
@@ -281,18 +314,19 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     return reply.send({ ...result, quality: qualityMeta() });
   });
 
-  /** Mide un modelo concreto y devuelve el detalle, para auditar de dónde sale su cifra. */
-  app.post<{ Params: { id: string }; Body: { providerId?: string } }>(
-    '/api/models/:id/measure',
-    async (request, reply) => {
-      const providerId = request.body?.providerId;
-      if (!providerId || !isProviderId(providerId)) return reply.code(400).send({ error: 'providerId inválido.' });
-      const modelId = decodeURIComponent(request.params.id);
-      const model = listModels(false).find((m) => m.providerId === providerId && m.id === modelId);
-      if (!model) return reply.code(404).send({ error: 'Modelo desconocido.' });
-      return reply.send(await measureModel(model));
-    },
-  );
+  /**
+   * Mide un modelo concreto y devuelve el detalle, para auditar de dónde sale su cifra.
+   * El id va en el cuerpo por el mismo motivo que en la ruta de arriba.
+   */
+  app.post<{ Body: { providerId?: string; modelId?: string } }>('/api/models/measure', async (request, reply) => {
+    const providerId = request.body?.providerId;
+    const modelId = request.body?.modelId;
+    if (!providerId || !isProviderId(providerId)) return reply.code(400).send({ error: 'providerId inválido.' });
+    if (!modelId) return reply.code(400).send({ error: 'Falta modelId.' });
+    const model = listModels(false).find((m) => m.providerId === providerId && m.id === modelId);
+    if (!model) return reply.code(404).send({ error: 'Modelo desconocido.' });
+    return reply.send(await measureModel(model));
+  });
 
   app.get('/api/activity', async () => recentRequests(50));
 

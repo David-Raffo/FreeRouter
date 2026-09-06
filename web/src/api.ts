@@ -198,10 +198,15 @@ export const api = {
     if (options.q) params.set('q', options.q);
     return request<ModelsPage>(`/api/models?${params.toString()}`);
   },
+  /**
+   * El id del modelo va en el cuerpo, nunca en la ruta: llevan barras (`@cf/meta/...`)
+   * y aunque se escapen como `%2F`, los proxys inversos las decodifican antes de
+   * reenviar y el servidor acaba recibiendo una ruta que no existe.
+   */
   setModelEnabled: (providerId: string, modelId: string, enabled: boolean) =>
-    request<{ ok: boolean }>(`/api/models/${encodeURIComponent(modelId)}/enabled`, {
+    request<{ ok: boolean }>('/api/models/enabled', {
       method: 'POST',
-      body: JSON.stringify({ providerId, enabled }),
+      body: JSON.stringify({ providerId, modelId, enabled }),
     }),
   keys: () => request<ApiKeyRow[]>('/api/keys'),
   previewKey: (profile: Profile, capabilities: Capability[]) =>
