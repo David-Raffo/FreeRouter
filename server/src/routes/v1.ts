@@ -19,6 +19,7 @@ import { estimateTokens, requestUsesTools } from '../routing/tokens.js';
 import { getSetting } from '../db.js';
 import { findApiKey, logRequest, touchApiKey, type ApiKeyRecord, type AttemptDetail } from '../store.js';
 import { renderPromptParts } from './prompt-log.js';
+import { createReasoningFilter, stripReasoning, stripReasoningFromChunk } from './reasoning.js';
 import {
   toChatRequest,
   toNamedSse,
@@ -94,6 +95,42 @@ function timelineOf(
 interface Dialect {
   nonStream(payload: Record<string, unknown>, model: string): unknown;
   stream(events: AsyncGenerator<string>, model: string): { contentType: string; body: Readable };
+}
+
+/**
+ * Quita el razonamiento del stream antes de que lo vea el dialecto.
+ *
+ * Se filtra aquí, sobre los trozos de Chat Completions, y no en cada dialecto: así vale
+ * igual para `/v1/chat/completions` y para `/v1/responses`, que se construye a partir de
+ * lo mismo.
+ */
+async function* withoutReasoning(events: AsyncGenerator<string>): AsyncGenerator<string> {
+  const filter = createReasoningFilter();
+  for await (const data of events) {
+    if (data === '[DONE]') {
+      yield data;
+      continue;
+    }
+    let chunk: Record<string, unknown>;
+    try {
+      chunk = JSON.parse(data) as Record<string, unknown>;
+    } catch {
+      yield data;
+      continue;
+    }
+    const limpio = stripReasoningFromChunk(chunk, filter);
+    if (limpio) yield JSON.stringify(limpio);
+  }
+
+  // El filtro puede estar reteniendo el final del texto por si era una etiqueta a
+  // medias. Sin esto, cada respuesta perdería sus últimas palabras.
+  const resto = filter.flush();
+  if (resto.length > 0) {
+    yield JSON.stringify({
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta: { content: resto } }],
+    });
+  }
 }
 
 const CHAT_COMPLETIONS: Dialect = {
@@ -316,6 +353,7 @@ async function serve(
     .header('x-freerouter-router-ms', routerOverhead().toFixed(1));
 
   if (!result.stream) {
+    if (!auth.includeReasoning) stripReasoning(result.payload);
     logRequest({
       apiKeyId: auth.id,
       providerId: result.model.providerId,
@@ -369,7 +407,7 @@ async function serve(
     });
   });
 
-  const rendered = dialect.stream(result.events, label);
+  const rendered = dialect.stream(auth.includeReasoning ? result.events : withoutReasoning(result.events), label);
   return reply
     .header('content-type', rendered.contentType)
     .header('cache-control', 'no-cache')

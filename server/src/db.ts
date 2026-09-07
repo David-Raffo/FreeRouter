@@ -142,6 +142,9 @@ function migrate(database: DB): void {
   // Cuánto tardó el propio router en decidir, aparte de lo que tardaran los proveedores.
   // Sin esta cifra no hay forma de saber si una petición lenta es culpa nuestra.
   addColumnIfMissing(database, 'request_log', 'router_ms', 'REAL');
+  // 1 si esta API key quiere recibir el razonamiento del modelo. Por defecto no: en un
+  // chatbot el «thinking» acaba en la cara del usuario final.
+  addColumnIfMissing(database, 'api_keys', 'include_reasoning', 'INTEGER');
 }
 
 /** ALTER idempotente: SQLite no tiene `ADD COLUMN IF NOT EXISTS`. */

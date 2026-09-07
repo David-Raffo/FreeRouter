@@ -26,6 +26,7 @@ export function Keys({ keys, onChange }: Props) {
   const [name, setName] = useState('');
   const [profile, setProfile] = useState<Profile>('balanceado');
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
+  const [includeReasoning, setIncludeReasoning] = useState(false);
   const [preview, setPreview] = useState<KeyPreview | null>(null);
   const [created, setCreated] = useState<ApiKeyRow | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export function Keys({ keys, onChange }: Props) {
   async function create() {
     setError(null);
     try {
-      const record = await api.createKey(name, profile, capabilities);
+      const record = await api.createKey(name, profile, capabilities, includeReasoning);
       setCreated(record);
       setName('');
       onChange();
@@ -108,6 +109,23 @@ export function Keys({ keys, onChange }: Props) {
               </label>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className={`check ${includeReasoning ? 'on' : ''}`}>
+            <input
+              type="checkbox"
+              checked={includeReasoning}
+              onChange={() => setIncludeReasoning((v) => !v)}
+              style={{ display: 'none' }}
+            />
+            Enviar también el razonamiento
+          </label>
+          <p className="hint">
+            Apagado, el modelo razona igual —eso no se toca, es lo que hace que responda mejor— pero su
+            «thinking» no viaja en la respuesta. Enciéndelo solo si lo vas a mostrar a propósito: en un chatbot
+            acaba en la cara del usuario final.
+          </p>
         </div>
 
         <Preview preview={preview} />

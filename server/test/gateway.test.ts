@@ -444,6 +444,77 @@ describe('gateway', () => {
     assert.match(String(response.json().error.message), /temperature/);
   });
 
+  it('el razonamiento no le llega al cliente salvo que su API key lo pida', async () => {
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    responders.groq = () =>
+      new Response(
+        JSON.stringify({
+          id: 'x',
+          object: 'chat.completion',
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: '<think>a ver, 6 por 7...</think>Son 42.',
+                reasoning_content: 'a ver, 6 por 7...',
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 9 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+
+    const callada = await chat(app, seedKey('calidad'));
+    const message = callada.json().choices[0].message;
+    assert.equal(message.content, 'Son 42.', 'ni el bloque ni una etiqueta suelta');
+    assert.equal(message.reasoning_content, undefined, 'ni el campo aparte');
+
+    // La misma respuesta, con una clave que sí lo quiere.
+    const plaintext = 'fr_con_razonamiento';
+    createApiKey('con razonamiento', 'calidad', [], plaintext, true);
+    const abierta = await chat(app, plaintext);
+    assert.match(String(abierta.json().choices[0].message.content), /<think>/, 'aquí sí se respeta');
+  });
+
+  it('en streaming tampoco se cuela, ni siquiera partido entre trozos', async () => {
+    seedProvider('groq', 'groq-modelo', 90, 30);
+    responders.groq = (body) => {
+      const encoder = new TextEncoder();
+      const trozos = ['<thi', 'nk>', 'pienso', '</think>', 'La ', 'respuesta.'];
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const t of trozos) {
+              controller.enqueue(encoder.encode(`data: ${chunk(t, String(body.model))}\n\n`));
+            }
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    };
+
+    const response = await chat(app, seedKey('calidad'), { stream: true });
+    const texto = response.body
+      .split('\n')
+      .filter((l) => l.startsWith('data: ') && !l.includes('[DONE]'))
+      .map((l) => {
+        try {
+          return JSON.parse(l.slice(6)).choices?.[0]?.delta?.content ?? '';
+        } catch {
+          return '';
+        }
+      })
+      .join('');
+
+    assert.equal(texto, 'La respuesta.', `el cliente vio: ${JSON.stringify(texto)}`);
+    assert.ok(!response.body.includes('think'), 'ni rastro de la etiqueta en el stream');
+  });
+
   it('un prompt de sistema enorme no se come el mensaje del usuario', async () => {
     // Era el fallo de verdad, no solo de presentación: el prompt se pegaba entero y se
     // cortaba a 4.000 caracteres desde el principio, así que con un sistema más largo

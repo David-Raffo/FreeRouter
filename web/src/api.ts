@@ -89,6 +89,7 @@ export interface ApiKeyRow {
   lastUsedAt: string | null;
   /** Solo viene en la respuesta a la creación; después es irrecuperable. */
   key?: string;
+  includeReasoning: boolean;
 }
 
 export interface QualityMeta {
@@ -211,8 +212,11 @@ export const api = {
   keys: () => request<ApiKeyRow[]>('/api/keys'),
   previewKey: (profile: Profile, capabilities: Capability[]) =>
     request<KeyPreview>('/api/keys/preview', { method: 'POST', body: JSON.stringify({ profile, capabilities }) }),
-  createKey: (name: string, profile: Profile, capabilities: Capability[]) =>
-    request<ApiKeyRow>('/api/keys', { method: 'POST', body: JSON.stringify({ name, profile, capabilities }) }),
+  createKey: (name: string, profile: Profile, capabilities: Capability[], includeReasoning = false) =>
+    request<ApiKeyRow>('/api/keys', {
+      method: 'POST',
+      body: JSON.stringify({ name, profile, capabilities, includeReasoning }),
+    }),
   revokeKey: (id: string) => request<{ ok: boolean }>(`/api/keys/${id}`, { method: 'DELETE' }),
   authState: () => request<AuthState>('/api/auth/state'),
   login: (password: string) =>

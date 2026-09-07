@@ -230,6 +230,14 @@ export interface ApiKeyRecord {
   createdAt: string;
   lastUsedAt: string | null;
   revoked: boolean;
+  /**
+   * ¿Se le manda al cliente el razonamiento del modelo?
+   *
+   * Por defecto no. El modelo razona igual —eso no se toca, porque es lo que hace que
+   * responda mejor—; lo único que cambia es si ese razonamiento viaja en la respuesta.
+   * En un chatbot acaba viéndolo el usuario final, que es justo lo que nadie quiere.
+   */
+  includeReasoning: boolean;
 }
 
 export function hashApiKey(key: string): string {
@@ -243,6 +251,7 @@ export function createApiKey(
   profile: Profile,
   capabilities: Capability[],
   plaintext: string,
+  includeReasoning = false,
 ): ApiKeyRecord {
   const record: ApiKeyRecord = {
     id: randomUUID(),
@@ -253,11 +262,12 @@ export function createApiKey(
     createdAt: new Date().toISOString(),
     lastUsedAt: null,
     revoked: false,
+    includeReasoning,
   };
   getDb()
     .prepare(
-      `INSERT INTO api_keys (id, key_hash, prefix, name, profile, capabilities, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO api_keys (id, key_hash, prefix, name, profile, capabilities, created_at, include_reasoning)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       record.id,
@@ -267,6 +277,7 @@ export function createApiKey(
       profile,
       JSON.stringify(capabilities),
       record.createdAt,
+      includeReasoning ? 1 : 0,
     );
   return record;
 }
@@ -303,6 +314,7 @@ function rowToApiKey(row: Record<string, unknown>): ApiKeyRecord {
     createdAt: row.created_at as string,
     lastUsedAt: (row.last_used_at as string | null) ?? null,
     revoked: row.revoked === 1,
+    includeReasoning: row.include_reasoning === 1,
   };
 }
 

@@ -132,6 +132,22 @@ atendiendo la petición, `x-freerouter-attempts` con cuántos hicieron falta y
 `x-freerouter-router-ms` con lo que tardó FreeRouter en decidir —unos 4 ms, para que
 puedas comprobar tú mismo que el tiempo se lo lleva el proveedor y no el router.
 
+### Razonamiento
+
+Los modelos que razonan cuelan su «thinking» de dos formas: entre etiquetas `<think>…
+</think>` dentro del propio texto, o en un campo aparte (`reasoning_content` en DeepSeek,
+`reasoning` en OpenRouter). En un chatbot eso acaba en la cara del usuario final.
+
+Por defecto **no se transmite**. El modelo razona igual —eso no se toca, es lo que hace
+que responda mejor—; lo único que cambia es qué viaja en la respuesta. Cada API key lleva
+su casilla «Enviar también el razonamiento» por si lo quieres mostrar a propósito.
+
+Filtrarlo en streaming tiene su miga: la etiqueta llega partida entre trozos («`<thi`» y
+«`nk>`»), así que el filtro guarda memoria de lo que aún podría ser el principio de una.
+Solo retiene cuando la cola de verdad se parece a una etiqueta: retener siempre unos
+caracteres «por si acaso» haría que el texto normal llegase con retraso, y en streaming
+eso se nota.
+
 ### Endpoints
 
 | Endpoint | Para qué |
@@ -568,8 +584,9 @@ Los modelos desactivados automáticamente se pueden reactivar desde el panel.
 - **Contexto en Cerebras**: no publica el tamaño de ventana en su API. Se usa el valor
   de `capabilities.json` y se corrige solo a la baja cuando un modelo rechaza una
   petición por contexto excedido.
-- **Modelos con razonamiento visible**: algunos (qwen3.6-27b) devuelven bloques
-  `<think>` dentro de `content`. Es comportamiento del modelo; el router no lo filtra.
+- **Modelos con razonamiento visible**: algunos devuelven bloques `<think>` dentro de
+  `content`, y otros lo mandan en un campo aparte (`reasoning_content`, `reasoning`). Por
+  defecto **no se le reenvía al cliente**: ver [Razonamiento](#razonamiento).
 - **Failover en streaming**: solo es posible antes de emitir el primer token. Si un
   proveedor falla a mitad del stream, el error se propaga al cliente.
 

@@ -276,13 +276,20 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     });
   });
 
-  app.post<{ Body: { name?: string; profile?: string; capabilities?: string[] } }>('/api/keys', async (request, reply) => {
+  app.post<{ Body: { name?: string; profile?: string; capabilities?: string[]; includeReasoning?: boolean } }>(
+    '/api/keys', async (request, reply) => {
     const parsed = parseKeySpec(request.body ?? {});
     if ('error' in parsed) return reply.code(400).send({ error: parsed.error });
 
     const name = request.body?.name?.trim() || `Key ${parsed.profile}`;
     const plaintext = generateApiKey();
-    const record = createApiKey(name, parsed.profile, parsed.capabilities, plaintext);
+    const record = createApiKey(
+      name,
+      parsed.profile,
+      parsed.capabilities,
+      plaintext,
+      request.body?.includeReasoning === true,
+    );
 
     // Única vez que se devuelve la clave en claro: después solo queda su hash.
     return reply.send({ ...record, key: plaintext });
