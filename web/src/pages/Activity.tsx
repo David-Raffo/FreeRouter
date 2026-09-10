@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type ActivityDetail, type ActivityRow, type AttemptDetail } from '../api';
 import { ModelName } from '../ui';
+import { splitConversation, type IndexedPart, type PromptPart } from '../prompt-view';
 
 /**
  * Historial de peticiones.
@@ -329,12 +330,6 @@ function Timeline({ attempts, routerMs }: { attempts: AttemptDetail[]; routerMs:
   );
 }
 
-interface PromptPart {
-  role: string;
-  text: string;
-  trimmed?: boolean;
-}
-
 /** Etiqueta legible de cada rol; lo que no conozcamos se muestra tal cual. */
 const ROLES: Record<string, string> = {
   system: 'Sistema',
@@ -368,8 +363,14 @@ function Prompt({ raw }: { raw: string | null }) {
     return <Block title="Prompt" text={raw} />;
   }
 
-  // Lo que de verdad se quiere ver: el último mensaje que no es del asistente.
-  const destacado = parts.map((p) => p.role).lastIndexOf('user');
+  const view = splitConversation(parts);
+  const etiqueta = (part: PromptPart): string => {
+    const titulo = ROLES[part.role] ?? part.role;
+    return part.trimmed ? `${titulo} (recortado)` : titulo;
+  };
+  const abierto = ({ part, index }: IndexedPart) => (
+    <Block key={index} title={etiqueta(part)} text={part.text} highlight={index === view.highlight} />
+  );
 
   return (
     <div className="stack" style={{ gap: 8 }}>
@@ -379,23 +380,32 @@ function Prompt({ raw }: { raw: string | null }) {
           {omitted === 1 ? '' : 'n'} y no se guardó{omitted === 1 ? '' : 'n'}.
         </span>
       )}
-      {parts.map((part, index) => {
-        const titulo = ROLES[part.role] ?? part.role;
-        const etiqueta = part.trimmed ? `${titulo} (recortado)` : titulo;
-        // El sistema se pliega salvo que sea lo único que hay.
-        const plegable = part.role === 'system' || part.role === 'developer';
-        if (plegable && parts.length > 1) {
-          return (
-            <details key={index}>
-              <summary className="dim" style={{ cursor: 'pointer', marginBottom: 4 }}>
-                {etiqueta} · {part.text.length} caracteres
-              </summary>
-              <Block title="" text={part.text} />
-            </details>
-          );
-        }
-        return <Block key={index} title={etiqueta} text={part.text} highlight={index === destacado} />;
-      })}
+
+      {view.system.map(({ part, index }) =>
+        view.collapseSystem ? (
+          <details key={index}>
+            <summary className="dim" style={{ cursor: 'pointer', marginBottom: 4 }}>
+              {etiqueta(part)} · {part.text.length} caracteres
+            </summary>
+            <Block title="" text={part.text} />
+          </details>
+        ) : (
+          abierto({ part, index })
+        ),
+      )}
+
+      {view.earlier.length > 0 && (
+        <details>
+          <summary className="dim" style={{ cursor: 'pointer', marginBottom: 4 }}>
+            Conversación anterior · {view.earlier.length} mensaje{view.earlier.length === 1 ? '' : 's'}
+          </summary>
+          <div className="stack" style={{ gap: 8, marginTop: 6 }}>
+            {view.earlier.map(abierto)}
+          </div>
+        </details>
+      )}
+
+      {view.recent.map(abierto)}
     </div>
   );
 }

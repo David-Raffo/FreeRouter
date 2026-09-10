@@ -682,8 +682,12 @@ una petición. Los tres casos:
   si no, se quedarían sin descontar de la cuota diaria y sin tok/s.
 
 El prompt se guarda **separado por mensajes**, no como un bloque de texto, y en el panel
-cada rol va en su propio recuadro con el de sistema plegado. Un prompt de sistema largo
-tapaba lo único que se suele querer mirar, que es lo que preguntó el usuario.
+solo se abre **el último intercambio**: la última respuesta del asistente y lo que el
+usuario contestó a eso, con la pregunta resaltada. Lo demás empieza plegado —el prompt de
+sistema por un lado, la conversación anterior en un solo bloque— y está a un clic. Una
+petición de chatbot trae la conversación entera, y con veinte turnos delante había que
+bajar media pantalla para encontrar lo que de verdad se quería mirar. Si en el último
+intercambio hay resultados de herramientas, se quedan a la vista: son parte de él.
 
 El reparto del espacio va **desde el final**, y eso arregla algo más que la presentación:
 antes se pegaba todo y se cortaba a 4.000 caracteres desde el principio, así que con un
