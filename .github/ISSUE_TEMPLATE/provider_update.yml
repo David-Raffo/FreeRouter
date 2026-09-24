@@ -1,0 +1,27 @@
+name: Provider update
+description: Report outdated limits or suggest a new free provider
+labels: [provider]
+body:
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type
+      options:
+        - Outdated limits
+        - New provider
+        - Provider no longer free
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Current limits, base URL and a link to the official source.
+    validations:
+      required: true

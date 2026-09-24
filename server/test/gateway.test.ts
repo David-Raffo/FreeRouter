@@ -657,7 +657,10 @@ y comillas "así" `.repeat(40),
     assert.equal(response.headers['x-freerouter-model'], 'llm7/abierto');
 
     // La revalidación de la clave es asíncrona.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    const deadline = Date.now() + 2000;
+    while (listModels(false).find((m) => m.id === 'con-saldo')?.enabled !== false && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
 
     const providerKey = listProviderKeys().find((entry) => entry.providerId === 'llm7');
     assert.equal(providerKey?.status, 'active', 'la cuenta sigue siendo utilizable');
