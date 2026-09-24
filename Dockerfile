@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------- build
 # better-sqlite3 es nativo: si no hay prebuild para esta plataforma, necesita
 # compilarse aquí. Por eso el builder trae toolchain y la imagen final no.
-FROM node:22-slim AS build
+FROM node:25-slim AS build
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # -------------------------------------------------------------- runtime
-FROM node:22-slim AS runtime
+FROM node:25-slim AS runtime
 
 ENV NODE_ENV=production \
     FREEROUTER_HOST=0.0.0.0 \
