@@ -7,7 +7,7 @@ cuotas de cada proveedor para no provocar 429 y hace failover cuando alguno fall
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg)](docker-compose.yml)
-[![Tests](https://img.shields.io/badge/tests-127%20passing-success.svg)](#tests)
+[![Tests](https://img.shields.io/badge/tests-164%20passing-success.svg)](#tests)
 
 ```python
 from openai import OpenAI
@@ -22,6 +22,32 @@ compatible con OpenAI al puerto local.
 
 A partir de ahí el cliente no sabe nada: no elige modelo, no sabe qué proveedor le está
 respondiendo y no tiene que gestionar reintentos.
+
+### El panel
+
+![Estado de los modelos](docs/capturas/estado.png)
+
+Cada modelo con su TTFT, su ritmo en tok/s y su nota de calidad, medidos —no declarados—.
+Los que no pueden servir caen al fondo, y una nota en gris (`~11`) avisa de que esa
+calidad es una estimación por familia y no un valor del Intelligence Index.
+
+![Historial de peticiones](docs/capturas/peticiones.png)
+
+Qué API key llamó, qué modelo acabó atendiéndola y cuántos intentos hicieron falta. Al
+pinchar una fila se abre la cronología: a quién se intentó, con qué error y cuánto tardó
+cada intento. En esta captura se ve el router funcionando —dos peticiones con `Int. 2`
+son failovers que el cliente no llegó a notar.
+
+![Proveedores](docs/capturas/proveedores.png)
+
+Se pegan las claves y ya está. Cada tarjeta trae los límites reales de ese proveedor y
+avisa de lo que conviene saber antes de conectarlo: que Cerebras dejó de tener tier
+gratuito, o que Google puede usar tus prompts para entrenar.
+
+![Creación de una API key](docs/capturas/api-keys.png)
+
+El cliente no elige modelo: eliges perfil y capacidades, y antes de crear la clave se te
+dice con cuántos modelos contaría y cuál la serviría ahora mismo.
 
 ### Por qué
 
@@ -794,7 +820,7 @@ stream y los tokens se estiman por longitud cuando el proveedor no manda `usage`
 npm test
 ```
 
-127 tests: scoring por perfil (con la saturación de velocidad y el suelo de calidad),
+164 tests: scoring por perfil (con la saturación de velocidad y el suelo de calidad),
 cuotas —incluida la diferencia entre cubo por modelo y por cuenta, y el castigo creciente
 tras un 429—, filtrado por capacidades, disyuntor de salud, autenticación del panel,
 traducción de la Responses API en los dos sentidos, rearmado de una respuesta troceada, y
