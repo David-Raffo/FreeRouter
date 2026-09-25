@@ -3,7 +3,7 @@
 [English](README.md) · **Español**
 
 **Un solo endpoint compatible con OpenAI por delante de 24 proveedores de inferencia
-gratuita.** Tú pones las claves; él decide qué modelo usar en cada petición, respeta las
+gratuita.** Tú pones las claves. Él decide qué modelo usar en cada petición, respeta las
 cuotas de cada proveedor para no provocar 429 y hace failover cuando alguno falla.
 
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
@@ -29,7 +29,7 @@ respondiendo y no tiene que gestionar reintentos.
 
 ![Estado de los modelos](docs/capturas/estado.png)
 
-Cada modelo con su TTFT, su ritmo en tok/s y su nota de calidad, medidos —no declarados—.
+Cada modelo con su TTFT, su ritmo en tok/s y su nota de calidad, medidos (no declarados).
 Los que no pueden servir caen al fondo, y una nota en gris (`~11`) avisa de que esa
 calidad es una estimación por familia y no un valor del Intelligence Index.
 
@@ -37,7 +37,7 @@ calidad es una estimación por familia y no un valor del Intelligence Index.
 
 Qué API key llamó, qué modelo acabó atendiéndola y cuántos intentos hicieron falta. Al
 pinchar una fila se abre la cronología: a quién se intentó, con qué error y cuánto tardó
-cada intento. En esta captura se ve el router funcionando —dos peticiones con `Int. 2`
+cada intento. En esta captura se ve el router funcionando: dos peticiones con `Int. 2`
 son failovers que el cliente no llegó a notar.
 
 ![Proveedores](docs/capturas/proveedores.png)
@@ -63,7 +63,7 @@ aplicaciones no se enteran.
 
 - [Instalación](#instalación) · [Docker](#docker) · [Contraseña](#contraseña)
 - [Usarlo](#usarlo) · [Endpoints](#endpoints)
-- [Cómo decide](#cómo-decide) — calidad, velocidad y por qué se miden así
+- [Cómo decide](#cómo-decide): calidad, velocidad y por qué se miden así
 - [Cuotas](#cuotas) · [Proveedores](#proveedores) · [Qué es gratis de verdad](#qué-es-gratis-de-verdad)
 - [Configuración](#configuración) · [Seguridad](#seguridad) · [Exponerlo a internet](#exponerlo-a-internet)
 - [Listado de modelos](#listado-de-modelos) · [Historial de peticiones](#historial-de-peticiones) · [Calibración](#calibración)
@@ -84,7 +84,7 @@ npm run build          # compila el panel y el servidor
 npm start              # http://localhost:8787/app/
 ```
 
-Para desarrollo, `npm run dev` levanta el servidor con recarga en caliente; el panel
+Para desarrollo, `npm run dev` levanta el servidor con recarga en caliente. El panel
 tiene su propio `npm run dev --workspace=web` en el puerto 5173 con proxy al 8787.
 
 ## Docker
@@ -116,8 +116,8 @@ existe pero es demasiado corta, el servidor se para antes de abrir el puerto. No
 ningún camino que acabe en un panel accesible sin proteger.
 
 Ese es el motivo de que la contraseña vaya en una variable de entorno y no en un
-asistente de instalación: por sí sola una variable sería peligrosa —olvidarla dejaría el
-panel abierto—, pero si olvidarla impide arrancar, el descuido es imposible. Es el mismo
+asistente de instalación: por sí sola una variable sería peligrosa (olvidarla dejaría el
+panel abierto), pero si olvidarla impide arrancar, el descuido es imposible. Es el mismo
 trato que hace Postgres con `POSTGRES_PASSWORD`.
 
 Para cambiarla, edita el `.env` y `docker compose up -d`. Las sesiones abiertas se caen
@@ -157,7 +157,7 @@ respuesta = client.chat.completions.create(
 
 La respuesta trae tres cabeceras: `x-freerouter-model` con el modelo que acabó
 atendiendo la petición, `x-freerouter-attempts` con cuántos hicieron falta y
-`x-freerouter-router-ms` con lo que tardó FreeRouter en decidir —unos 4 ms, para que
+`x-freerouter-router-ms` con lo que tardó FreeRouter en decidir, unos 4 ms, para que
 puedas comprobar tú mismo que el tiempo se lo lleva el proveedor y no el router.
 
 ### Razonamiento
@@ -166,8 +166,8 @@ Los modelos que razonan cuelan su «thinking» de dos formas: entre etiquetas `<
 </think>` dentro del propio texto, o en un campo aparte (`reasoning_content` en DeepSeek,
 `reasoning` en OpenRouter). En un chatbot eso acaba en la cara del usuario final.
 
-Por defecto **no se transmite**. El modelo razona igual —eso no se toca, es lo que hace
-que responda mejor—; lo único que cambia es qué viaja en la respuesta. Cada API key lleva
+Por defecto **no se transmite**. El modelo razona igual (eso no se toca, es lo que hace
+que responda mejor). Lo único que cambia es qué viaja en la respuesta. Cada API key lleva
 su casilla «Enviar también el razonamiento» por si lo quieres mostrar a propósito.
 
 Filtrarlo en streaming tiene su miga: la etiqueta llega partida entre trozos («`<thi`» y
@@ -191,12 +191,12 @@ LangChain lo activa según cómo se configure. Da igual cuál uses, el enrutado 
 De `/v1/responses` queda fuera lo que un router de modelos gratuitos no puede dar: las
 herramientas integradas (búsqueda web, intérprete de código) las ejecuta OpenAI en su
 propia infraestructura y aquí se descartan, y `previous_response_id` se rechaza con un
-error claro porque FreeRouter no guarda conversaciones —hay que mandar el historial
+error claro porque FreeRouter no guarda conversaciones: hay que mandar el historial
 entero en `input`, como en la API clásica.
 
 Que `GET /v1/models` devuelva solo `auto` es a propósito: el cliente no elige modelo, esa
 es la idea del proyecto. Si tu herramienta te obliga a escoger uno de una lista, escoge
-`auto`; si te deja escribirlo, vale cualquier cosa.
+`auto`. Si te deja escribirlo, vale cualquier cosa.
 
 ## Cómo decide
 
@@ -210,7 +210,7 @@ score = (peso_calidad · calidad + peso_velocidad · velocidad) · penalización
 ```
 
 Las dos componentes se miden en **escala absoluta**, no comparando con el resto de
-candidatos. Normalizar contra el grupo —1 al mejor, 0 al peor— tenía dos vicios: en un
+candidatos. Normalizar contra el grupo (1 al mejor, 0 al peor) tenía dos vicios: en un
 grupo de modelos lentos alguno sacaba un 1 de velocidad igualmente, y el más rápido se
 llevaba el máximo aunque su ventaja fuese imperceptible.
 
@@ -222,12 +222,12 @@ llevaba el máximo aunque su ventaja fuese imperceptible.
 
 - **Velocidad**: combina dos medidas, con el ritmo pesando casi el doble que el arranque,
   y **satura a 200 tok/s**. A ese ritmo una respuesta de cien tokens sale en medio
-  segundo; que un modelo vaya a 667 no la hace perceptiblemente mejor. Sin ese techo, la
+  segundo. Que un modelo vaya a 667 no la hace perceptiblemente mejor. Sin ese techo, la
   velocidad bruta compraba el primer puesto: un modelo de calidad 11 que iba a 667 tok/s
   se colocaba por delante de otros mucho más capaces. El TTFT tiene sus propios límites
   absolutos, 300 ms (todo lo que baje de ahí se percibe igual) y 10 s.
 - **Suelo de calidad**: por debajo de **15** de Intelligence Index la puntuación se hunde
-  de forma cuadrática — un 11 conserva la mitad, un 1 se queda en la milésima parte. No
+  de forma cuadrática: un 11 conserva la mitad, un 1 se queda en la milésima parte. No
   es un filtro: el modelo sigue en la cadena como último recurso, porque uno flojo es
   mejor que ninguno, pero deja de competir por el primer puesto. Hace falta porque en el
   tier gratuito la mediana de calidad es 11: sin suelo, el router acaba en modelos que no
@@ -259,7 +259,7 @@ llevaba el máximo aunque su ventaja fuese imperceptible.
   además es lo que determina cuánto se espera de verdad.
 
   `POST /api/models/<id>/measure` con `{"providerId":"…"}` devuelve el detalle completo
-  de una medición —eventos, huecos entre ellos, proporción de ráfaga— para poder
+  de una medición (eventos, huecos entre ellos, proporción de ráfaga) para poder
   auditar cualquier cifra que no cuadre. Cuando el proveedor informa de su propio tiempo
   de generación (Groq manda `usage.completion_time`) también se devuelve, que es la
   única referencia externa contra la que contrastar:
@@ -280,7 +280,7 @@ llevaba el máximo aunque su ventaja fuese imperceptible.
 
   Detalles del endpoint que costaron encontrar: el índice viaja anidado en
   `evaluations.artificial_analysis_intelligence_index`, no en la raíz del modelo, y la
-  respuesta está paginada — quedarse en la primera página deja fuera dos tercios de los
+  respuesta está paginada: quedarse en la primera página deja fuera dos tercios de los
   datos. La sincronización **fusiona**: nunca borra un valor que ya estuviera en
   `quality.json`.
 
@@ -307,13 +307,13 @@ petición que sale bien lo devuelve al mínimo.
 Un castigo fijo no sirve, porque el 429 tapa dos situaciones distintas y no dice cuál es:
 
 - Un pico momentáneo. Los modelos `:free` de OpenRouter van por proveedores compartidos y
-  a la hora punta devuelven 429 con el mensaje «Provider returned error» —que no es la
-  cuota de OpenRouter, es el de detrás saturado—. En un minuto vuelven.
+  a la hora punta devuelven 429 con el mensaje «Provider returned error» (que no es la
+  cuota de OpenRouter, es el de detrás saturado). En un minuto vuelven.
 - Un cubo agotado de verdad, que va a seguir agotado un buen rato.
 
 Con un castigo corto, el segundo caso se reintenta sin parar. Y reintentar no es gratis:
 medido sobre tráfico real, un fallo de Groq cuesta 76 ms de mediana pero uno de
-OpenRouter 532 ms, siete veces más — y en OpenRouter además gasta una de las 50
+OpenRouter 532 ms, siete veces más, y en OpenRouter además gasta una de las 50
 peticiones diarias, porque allí **las fallidas también cuentan**. Con un castigo largo,
 en cambio, un pico de un minuto te deja sin tu mejor modelo durante horas. Doblar empieza
 barato y se pone caro solo con quien demuestra estarlo.
@@ -343,16 +343,15 @@ baja ahí y el enrutado no se entera.
 | 8.º | 2,1 h | 6 h (tope) |
 
 Dos límites al castigo: si el proveedor manda `retry-after`, sabe más que nosotros y
-manda su cifra —el multiplicador no se le aplica—; y nunca se aparta un modelo más allá
+manda su cifra (el multiplicador no se le aplica) y nunca se aparta un modelo más allá
 del reinicio diario, porque pasada esa hora la cuota vuelve sola.
 
 ### Proveedores
 
 El catálogo vive en `server/catalog/providers.json`. Como todos exponen una API
 compatible con OpenAI, un proveedor es **datos, no código**: URL base, formato de clave
-y límites. Añadir uno es una entrada en ese JSON. Los dos únicos con lógica propia
-—Groq, que informa de su cuota en cabeceras, y OpenRouter, que tiene endpoint de
-cuenta— la aportan en `src/providers/overrides.ts`.
+y límites. Añadir uno es una entrada en ese JSON. Los dos únicos con lógica propia (Groq, que informa de su cuota en cabeceras, y OpenRouter, que tiene endpoint de
+cuenta) la aportan en `src/providers/overrides.ts`.
 
 | Proveedor | Cuota gratuita | Notas |
 | --------- | -------------- | ----- |
@@ -371,11 +370,11 @@ cuenta— la aportan en `src/providers/overrides.ts`.
 | **Requesty** | ~200 req/día | Solo se enrutan sus modelos a precio cero |
 | **OpenRouter** | 50 req/día (1.000 con 10 $ gastados) | Los fallos también gastan cuota |
 | **ModelScope** | 2.000 req/día por cuenta, reinicio cada 24 h | Más cuota diaria que Groq. Plataforma china: peor latencia desde Europa |
-| **OrcaRouter** | Limitado por tasa, no por cuota; sin tarjeta | 3 modelos gratis + un alias que reparte entre ellos |
-| **TokenRouter** | 2 modelos a precio cero | No publican límites; ellos mismos avisan de que no garantizan estabilidad |
-| **Pollinations** | 12 req/min con registro gratuito | 280 modelos de texto de 394; el resto son de imagen y audio |
+| **OrcaRouter** | Limitado por tasa, no por cuota. Sin tarjeta | 3 modelos gratis + un alias que reparte entre ellos |
+| **TokenRouter** | 2 modelos a precio cero | No publican límites. Ellos mismos avisan de que no garantizan estabilidad |
+| **Pollinations** | 12 req/min con registro gratuito | 280 modelos de texto de 394. El resto son de imagen y audio |
 | **Cohere** | 1.000 llamadas/mes · 20 req/min | Claves de prueba: evaluación, no producción |
-| **Hugging Face** | 0,10 $/mes en crédito que se renueva | Da para poco; va casi al final de la cadena |
+| **Hugging Face** | 0,10 $/mes en crédito que se renueva | Da para poco. Va casi al final de la cadena |
 | **Cerebras** | ⚠️ Ya no es gratis | Trial de 5 $ que caduca |
 | **Scaleway** | ⚠️ 1M tokens de bienvenida | Crédito que se agota |
 | **Alibaba DashScope** | ⚠️ 1M tokens/modelo, 90 días | Crédito con caducidad |
@@ -410,8 +409,8 @@ cabeceras y los 429 del propio proveedor.
 
 **Credenciales de dos partes.** Cloudflare mete el id de cuenta dentro de la URL
 (`/accounts/{id}/ai/v1`), así que su credencial se pega como `idDeCuenta:token` y se
-corta por el primer `:` — el token puede contener más. El descriptor lo declara con
-`credentialFormat: "account:token"` y `baseUrlTemplate`; el resto del router no se
+corta por el primer `:`: el token puede contener más. El descriptor lo declara con
+`credentialFormat: "account:token"` y `baseUrlTemplate`. El resto del router no se
 entera. Cloudflare tampoco expone `/models` en su ruta compatible con OpenAI (devuelve
 405): sus modelos se listan aparte, en `/ai/models/search`, filtrando por la tarea
 «Text Generation».
@@ -421,10 +420,10 @@ un modelo de embeddings o a un generador de imágenes falla siempre:
 
 - `freeOnly` para los agregadores que mezclan gratis y de pago (OpenRouter, Requesty,
   SiliconFlow): solo pasan los de precio cero confirmado. Un modelo sin precio conocido
-  se descarta — mejor perder un modelo que facturar sin querer.
+  se descarta: mejor perder un modelo que facturar sin querer.
 - `freeIdPattern` cuando el agregador mezcla gratis y de pago pero **no publica precios
   legibles**. OrcaRouter devuelve 194 modelos sin campo de precio, con Claude Opus y GPT
-  entre ellos; TokenRouter ni siquiera deja listarlos sin clave. En los dos, lo único que
+  entre ellos. TokenRouter ni siquiera deja listarlos sin clave. En los dos, lo único que
   distingue a los gratuitos es el sufijo del id (`-free`, `:free`), así que solo pasan
   esos. Sin precio que comprobar, el id es la única defensa contra facturar sin querer:
   en OrcaRouter deja 4 modelos de los 194.
@@ -435,7 +434,7 @@ un modelo de embeddings o a un generador de imágenes falla siempre:
   modelos y su `/models` solo devuelve el id: sin precio no hay forma de saber cuáles
   son gratis, y ahí dentro hay Claude, GPT y Gemini de pago. models.dev es el catálogo
   abierto que usa el propio OpenCode y publica precio, contexto, modalidades y tool use
-  por modelo; cruzándolo con lo que el proveedor sirve de verdad quedan los 8 gratuitos.
+  por modelo. Cruzándolo con lo que el proveedor sirve de verdad quedan los 8 gratuitos.
 
   Se activa con `modelsDevKey` en el descriptor, y **solo donde sus precios reflejan el
   tier gratuito**. En los proveedores que cobran por consumo (Cloudflare y sus neuronas)
@@ -464,20 +463,20 @@ peticiones fallidas también la consumen.
 
 | Variable                       | Por defecto           | Para qué                                              |
 | ------------------------------ | --------------------- | ----------------------------------------------------- |
-| `FREEROUTER_PASSWORD`          | —                     | **Obligatoria.** Contraseña del panel; sin ella no arranca |
+| `FREEROUTER_PASSWORD`          | -                     | **Obligatoria.** Contraseña del panel. Sin ella no arranca |
 | `FREEROUTER_DISABLE_AUTH`      | `false`               | Quita la contraseña. Solo para uso local              |
 | `FREEROUTER_HTTPS`             | `false`               | Marca la cookie de sesión como `secure`               |
 | `FREEROUTER_PORT`              | `8787`                | Puerto del panel y de la API                          |
 | `FREEROUTER_HOST`              | `127.0.0.1`           | Interfaz de escucha                                   |
 | `FREEROUTER_HOME`              | `~/.freerouter`       | Base de datos y clave maestra                         |
-| `FREEROUTER_PASSPHRASE`        | —                     | Deriva la clave maestra de una passphrase (scrypt)    |
-| `ARTIFICIAL_ANALYSIS_API_KEY`  | —                     | Activa el Intelligence Index real                     |
+| `FREEROUTER_PASSPHRASE`        | -                     | Deriva la clave maestra de una passphrase (scrypt)    |
+| `ARTIFICIAL_ANALYSIS_API_KEY`  | -                     | Activa el Intelligence Index real                     |
 | `FREEROUTER_DB`                | `<HOME>/freerouter.db`| Ruta del fichero SQLite                               |
 | `LOG_LEVEL`                    | `info`                | Verbosidad del log (`debug`, `warn`, `error`…)        |
 | `FREEROUTER_BIND`              | `0.0.0.0`             | A qué interfaz se publica el 8787 (solo Docker)       |
-| `FREEROUTER_DOMAIN`            | —                     | Dominio para el perfil `https` (Caddy)                |
-| `ACME_EMAIL`                   | —                     | Correo de aviso de Let's Encrypt, perfil `https`      |
-| `CLOUDFLARE_TUNNEL_TOKEN`      | —                     | Token del túnel, perfil `tunnel`                      |
+| `FREEROUTER_DOMAIN`            | -                     | Dominio para el perfil `https` (Caddy)                |
+| `ACME_EMAIL`                   | -                     | Correo de aviso de Let's Encrypt, perfil `https`      |
+| `CLOUDFLARE_TUNNEL_TOKEN`      | -                     | Token del túnel, perfil `tunnel`                      |
 
 Los ficheros de `server/catalog/` (`limits.json`, `capabilities.json`, `quality.json`)
 son editables a mano y se recargan sin recompilar.
@@ -494,7 +493,7 @@ asistente de instalación.
 La sesión va en una cookie firmada con HMAC, `httpOnly` y `SameSite=Lax`, sin tabla de
 sesiones. Ocho intentos fallidos bloquean el acceso cinco minutos.
 
-**2. Cifrado en reposo.** Las claves de proveedor se cifran con AES-256-GCM; la clave
+**2. Cifrado en reposo.** Las claves de proveedor se cifran con AES-256-GCM. La clave
 maestra vive en `~/.freerouter/master.key` con permisos restringidos (y ACL propia en
 Windows). El panel solo llega a ver los últimos 4 caracteres de cada clave.
 
@@ -506,7 +505,7 @@ lo resuelve la aplicación: sin él, la cookie de sesión y tus API keys viajan 
 Hay dos formas, según si tu servidor tiene IP pública o no. Las dos son perfiles de
 Docker Compose en este mismo repo: no hay ficheros aparte ni pasos manuales.
 
-**Método 1 — abrir el puerto (`--profile https`).** Es el normal para un VPS: tienes IP
+**Método 1: abrir el puerto (`--profile https`).** Es el normal para un VPS: tienes IP
 pública y puedes apuntarle un dominio. Caddy se pone delante y pide el certificado de
 Let's Encrypt solo, sin cuenta en ningún sitio.
 
@@ -514,7 +513,7 @@ Let's Encrypt solo, sin cuenta en ningún sitio.
 # .env
 FREEROUTER_PASSWORD=la-que-quieras
 FREEROUTER_DOMAIN=freerouter.tudominio.com
-ACME_EMAIL=tu@correo.com          # avisos de caducidad; opcional pero recomendable
+ACME_EMAIL=tu@correo.com          # avisos de caducidad, opcional pero recomendable
 FREEROUTER_HTTPS=true
 FREEROUTER_BIND=127.0.0.1         # el 8787 deja de ser accesible desde fuera
 ```
@@ -526,11 +525,11 @@ docker compose --profile https up -d
 ```
 
 `FREEROUTER_BIND=127.0.0.1` es lo que impide saltarse el HTTPS yendo al `:8787` directo.
-El certificado se renueva solo; no hay cron que montar.
+El certificado se renueva solo. No hay cron que montar.
 
-**Método 2 — túnel de Cloudflare (`--profile tunnel`).** Para cuando *no* puedes abrir
+**Método 2: túnel de Cloudflare (`--profile tunnel`).** Para cuando *no* puedes abrir
 puertos: un servidor en casa, detrás de CGNAT, o un router que no controlas. La conexión
-sale de dentro hacia fuera, así que no hay nada que abrir — a cambio necesitas una cuenta
+sale de dentro hacia fuera, así que no hay nada que abrir: a cambio necesitas una cuenta
 de Cloudflare (gratuita) y el tráfico pasa por ellos.
 
 En [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels, crea
@@ -560,7 +559,7 @@ docker run --rm --network host cloudflare/cloudflared:latest tunnel --url http:/
 ```
 
 Da una URL `https://algo-random.trycloudflare.com` que muere al cortar el proceso. Sirve
-para probar desde el móvil o desde otro sitio; no para dejarlo puesto.
+para probar desde el móvil o desde otro sitio. No para dejarlo puesto.
 
 `FREEROUTER_DISABLE_AUTH=true` quita la contraseña. Solo tiene sentido si el panel está
 atado a `127.0.0.1` y nadie más llega a esa máquina.
@@ -574,10 +573,10 @@ Aprendido con tráfico real, no en teoría:
   por los demás. No se reintenta, porque reintentar no lo arregla.
 - **401 en un modelo concreto**: algunos modelos de OpenRouter están reservados a
   ciertos clientes y responden 401 aunque la clave sea válida. Antes de dar la clave
-  por muerta se revalida; si está bien, se desactiva **solo ese modelo**. Sin esta
+  por muerta se revalida. Si está bien, se desactiva **solo ese modelo**. Sin esta
   comprobación un modelo raro tumbaría a los otros 17 del proveedor.
-- **Un modelo que no genera ni un token** —se agota el plazo del primer token, o
-  responde 200 y no escribe nada— sale del enrutado **al primer fallo** y se retira al
+- **Un modelo que no genera ni un token** (se agota el plazo del primer token, o
+  responde 200 y no escribe nada) sale del enrutado **al primer fallo** y se retira al
   tercero. No es un bache: el proveedor lo anuncia y no funciona, y NVIDIA sola publica
   decenas así. Con el trato normal hacían falta ocho fallos y, entre cuarentena y
   cuarentena, eso son horas durante las cuales el modelo sigue apareciendo como activo y
@@ -586,9 +585,9 @@ Aprendido con tráfico real, no en teoría:
   retirarlo. Ahí un fallo aislado suele ser pasajero de verdad, y retirar por eso
   perdería modelos que funcionan.
 - **Continuar la cadena**: *cualquier* error deja pasar al siguiente candidato, un 400
-  incluido. En teoría un 400 es culpa de la petición y fallaría igual en todos; en la
-  práctica no lo es —OpenCode devuelve 400 con «Upstream request failed: Model is
-  unavailable», que es un problema suyo disfrazado—. Si todos los candidatos coinciden en
+  incluido. En teoría un 400 es culpa de la petición y fallaría igual en todos. En la
+  práctica no lo es (OpenCode devuelve 400 con «Upstream request failed: Model is
+  unavailable», que es un problema suyo disfrazado). Si todos los candidatos coinciden en
   rechazarla, entonces sí se devuelve 400 con el motivo, en vez de un 502 genérico.
 - **Un proveedor que no admite streaming** no se lleva un fallo por ello. Medir el TTFT
   es un extra nuestro (ver [Medir el TTFT siempre](#medir-el-ttft-siempre)): si lo
@@ -674,13 +673,13 @@ contenido, de modo que sigue estando aunque el registro de prompts esté apagado
 ### Medir el TTFT siempre
 
 Una respuesta que llega de una pieza no tiene «primer token», así que no hay TTFT que
-cronometrar. Eso deja fuera a todo cliente que no use streaming —n8n, sin ir más lejos—
+cronometrar. Eso deja fuera a todo cliente que no use streaming (n8n, sin ir más lejos)
 y el router se queda sin una de sus dos métricas de velocidad por mucho que se le use.
 
 Por eso, por defecto, **FreeRouter le pide la respuesta troceada al proveedor aunque tu
 cliente no lo haya pedido**, cronometra el primer token y vuelve a juntarla antes de
 contestar. Lo que recibes es un `chat.completion` idéntico al que habrías recibido de
-todos modos; lo único que cambia es que ahora hay TTFT.
+todos modos. Lo único que cambia es que ahora hay TTFT.
 
 Se apaga con la casilla «Medir TTFT siempre» de la pestaña Peticiones.
 
@@ -692,15 +691,15 @@ modelo, para que la comparación fuese limpia:
 | Con streaming interno | 2,73 | 0,09 |
 | De una pieza | 2,73 | 0,19 |
 
-Es el mismo trabajo del modelo; lo único que cambia es cómo se empaqueta el transporte.
+Es el mismo trabajo del modelo. Lo único que cambia es cómo se empaqueta el transporte.
 
 **Y nunca puede provocar un error**, porque medir el TTFT es un extra y no debe costar ni
 una petición. Los tres casos:
 
 - El proveedor **ignora** la petición de troceado y contesta de una pieza. Se lee tal
-  cual; solo se pierde el TTFT, que ahí no existía.
-- El proveedor la **rechaza** con un 400. Se reintenta el mismo modelo sin trocear —no
-  se pasa a otro— y queda apuntado para no volver a pedírselo nunca. Ese rechazo no
+  cual. Solo se pierde el TTFT, que ahí no existía.
+- El proveedor la **rechaza** con un 400. Se reintenta el mismo modelo sin trocear (no
+  se pasa a otro) y queda apuntado para no volver a pedírselo nunca. Ese rechazo no
   cuenta como fallo ni ensucia la salud del modelo. Solo un 400 dispara esto: un 5xx no
   dice nada sobre el streaming, y reintentarlo duplicaría las llamadas a un proveedor
   que ya está fallando.
@@ -711,8 +710,8 @@ una petición. Los tres casos:
 
 El prompt se guarda **separado por mensajes**, no como un bloque de texto, y en el panel
 solo se abre **el último intercambio**: la última respuesta del asistente y lo que el
-usuario contestó a eso, con la pregunta resaltada. Lo demás empieza plegado —el prompt de
-sistema por un lado, la conversación anterior en un solo bloque— y está a un clic. Una
+usuario contestó a eso, con la pregunta resaltada. Lo demás empieza plegado (el prompt de
+sistema por un lado, la conversación anterior en un solo bloque) y está a un clic. Una
 petición de chatbot trae la conversación entera, y con veinte turnos delante había que
 bajar media pantalla para encontrar lo que de verdad se quería mirar. Si en el último
 intercambio hay resultados de herramientas, se quedan a la vista: son parte de él.
@@ -723,8 +722,8 @@ sistema más largo que eso **el mensaje del usuario no llegaba a guardarse**. Ah
 último que se dijo se conserva entero y lo que sobra se lo lleva el sistema, marcado como
 recortado. Las peticiones anteriores a este cambio se siguen enseñando tal cual.
 
-Guardar prompts y respuestas está activado por defecto —es lo que hace útil el
-historial— pero son datos sensibles que quedan en la base de datos local. Se puede
+Guardar prompts y respuestas está activado por defecto (es lo que hace útil el
+historial) pero son datos sensibles que quedan en la base de datos local. Se puede
 apagar con la casilla «Guardar prompts y respuestas», y «Purgar contenido» borra los
 textos ya guardados conservando las métricas. Cada texto se recorta a 4.000 caracteres
 y solo se conservan las últimas 500 peticiones, así que la base de datos no crece sin
@@ -740,8 +739,8 @@ datos se queda en la mitad de la escala de velocidad: ni ventaja ni castigo.
 Se dispara sola en dos momentos: al arrancar y **al conectar un proveedor**. Lo segundo
 importa más de lo que parece: el sondeo periódico mide un modelo cada dos minutos, así
 que conectar un proveedor con decenas de modelos tardaría más de una hora en tener datos
-y el router decidiría casi a ciegas mientras tanto. El panel solo informa del progreso;
-no hay botón porque no hace falta pulsarlo.
+y el router decidiría casi a ciegas mientras tanto. El panel solo informa del progreso.
+No hay botón porque no hace falta pulsarlo.
 
 La calibración respeta la cuota como cualquier otra petición: si el cubo por minuto de
 un proveedor se llena, **espera** al hueco en vez de saltarse el modelo. Para remedirlo
@@ -750,7 +749,7 @@ todo desde cero: `POST /api/warmup?force=true`.
 **Cada cuánto se remide un modelo.** No es un número fijo, y no puede serlo: un sondeo
 gasta una petición real de la cuota del proveedor. Medir cada modelo cada hora le cuesta a
 Cohere el 72 % de sus 33 peticiones diarias y a OpenRouter el 48 % de sus 50, mientras que
-a NVIDIA o Cloudflare —sin tope diario— no le cuesta nada. Un umbral único o arruina al
+a NVIDIA o Cloudflare (sin tope diario) no le cuesta nada. Un umbral único o arruina al
 pobre o desaprovecha al rico.
 
 Así que el ritmo sale de la cuota: se reserva el **5 %** de las peticiones diarias del
@@ -758,7 +757,7 @@ proveedor para sondeos y se reparte entre sus modelos.
 
 | Proveedor | Modelos | Cuota/día | Se remide cada | Coste |
 | --- | --- | --- | --- | --- |
-| NVIDIA | 68 | sin tope | 3 h | — |
+| NVIDIA | 68 | sin tope | 3 h | - |
 | Groq | 7 | 1.000 | 3,4 h | 5 % |
 | ModelScope | 47 | 2.000 | 11,3 h | 5 % |
 | Google | 10 | 250 | 19,2 h | 5 % |
@@ -772,7 +771,7 @@ métricas sin coste añadido.
 
 Las tres horas de base tampoco son una hora: la velocidad de un modelo no cambia de hora
 en hora, los que de verdad se usan ya se refrescan solos, y hay proveedores sin tope de
-peticiones que sí lo tienen de otra cosa —Cloudflare cuenta neuronas— a los que 68
+peticiones que sí lo tienen de otra cosa (Cloudflare cuenta neuronas) a los que 68
 sondeos por hora sí les dolería.
 
 **El bucle barre, no gotea.** Antes se medía un modelo cada dos minutos: con 76 modelos y
@@ -786,25 +785,25 @@ de 24 proveedores salen unos 1.150 sondeos al día, menos de uno por minuto de m
 **Paralelismo.** Cada proveedor es una API distinta con su propia cuota, así que se
 miden en paralelo. Hay un tope global de 6 mediciones simultáneas, y no es arbitrario:
 varios streams compitiendo por el mismo ancho de banda y el mismo bucle de eventos hacen
-que el ritmo salga más bajo del real. Con seis a la vez el sesgo es despreciable —cada
-stream son unos pocos KB/s—.
+que el ritmo salga más bajo del real. Con seis a la vez el sesgo es despreciable (cada
+stream son unos pocos KB/s).
 
 Ese tope global es el único: un proveedor puede usar las seis ranuras si los demás ya han
-terminado. Limitarlo además a dos por proveedor no protegía nada —las cuotas ya se
-reservan antes de cada sondeo— y convertía al proveedor con más modelos en el cuello de
+terminado. Limitarlo además a dos por proveedor no protegía nada (las cuotas ya se
+reservan antes de cada sondeo) y convertía al proveedor con más modelos en el cuello de
 botella de todo: en una instalación nueva, NVIDIA trae 68 modelos y tardaba 393 s
 mientras el resto acababa en 90 s y cuatro ranuras se quedaban libres.
 
 **Plazo para el primer token.** Aparte del tope total de 2 minutos hay uno de 25 s para
 que el modelo *arranque*. Un modelo que no emite nada en ese tiempo no va a elegirse
-jamás —la puntuación de velocidad ya da cero a partir de 10 s de TTFT—, así que esperarle
+jamás (la puntuación de velocidad ya da cero a partir de 10 s de TTFT), así que esperarle
 dos minutos solo servía para apuntar lo que ya se sabía: cuatro modelos muertos de NVIDIA
 se comían 480 s de los 786 s del proveedor. En cuanto llega el primer token el plazo se
 cancela y manda el tope total, para no cortar a un modelo lento pero sano mientras
 escribe.
 
 **Orden.** Dentro de cada proveedor se miden primero los de más calidad. La calibración
-de un catálogo grande dura minutos y durante ese rato el router decide a medias; que
+de un catálogo grande dura minutos y durante ese rato el router decide a medias. Que
 los candidatos que de verdad va a elegir tengan su medida en los primeros segundos
 importa más que el orden del resto de la cola.
 
@@ -813,7 +812,7 @@ a los casi 7 de antes.
 
 Un detalle que costó encontrar: hay proveedores que mandan la respuesta entera en un
 único evento SSE. Midiendo hasta el último evento con contenido, el intervalo de
-generación sería cero y no habría tok/s; por eso el intervalo se mide hasta el final del
+generación sería cero y no habría tok/s. Por eso el intervalo se mide hasta el final del
 stream y los tokens se estiman por longitud cuando el proveedor no manda `usage`.
 
 ## Tests
@@ -823,10 +822,10 @@ npm test
 ```
 
 164 tests: scoring por perfil (con la saturación de velocidad y el suelo de calidad),
-cuotas —incluida la diferencia entre cubo por modelo y por cuenta, y el castigo creciente
-tras un 429—, filtrado por capacidades, disyuntor de salud, autenticación del panel,
+cuotas (incluida la diferencia entre cubo por modelo y por cuenta, y el castigo creciente
+tras un 429), filtrado por capacidades, disyuntor de salud, autenticación del panel,
 traducción de la Responses API en los dos sentidos, rearmado de una respuesta troceada, y
-pruebas de extremo a extremo del gateway con `fetch` simulado — entre ellas 10 peticiones
+pruebas de extremo a extremo del gateway con `fetch` simulado: entre ellas 10 peticiones
 concurrentes repartidas entre tres proveedores sin un solo 429 ni reintento.
 
 `test/http.test.ts` levanta un servidor HTTP **real** en vez de usar `app.inject()`.
@@ -845,7 +844,7 @@ por la misma razón: un doble más permisivo que la realidad no prueba nada.
 │   │   ├── limits.json      #   Semilla de cuotas
 │   │   └── quality.json     #   Intelligence Index cacheado
 │   └── src/
-│       ├── providers/       # generic.ts construye un proveedor desde su descriptor;
+│       ├── providers/       # generic.ts construye un proveedor desde su descriptor,
 │       │                    # overrides.ts solo para Groq, Cloudflare y OpenRouter
 │       ├── routing/         # quota · health · score · select · execute · probe
 │       ├── catalog/         # Sincronización con Artificial Analysis
@@ -862,7 +861,7 @@ por la misma razón: un doble más permisivo que la realidad no prueba nada.
 
 **Añadir un proveedor** es normalmente una entrada en `providers.json`, sin tocar código:
 todos exponen una API compatible con OpenAI, así que un proveedor es *datos*. Solo hacen
-falta líneas en `overrides.ts` cuando el proveedor se sale del molde — Groq publica su
+falta líneas en `overrides.ts` cuando el proveedor se sale del molde: Groq publica su
 cuota en cabeceras, Cloudflare lista los modelos en otra ruta, OpenRouter tiene endpoint
 de cuenta.
 
@@ -876,7 +875,7 @@ Los issues y los PR son bienvenidos. Dos cosas que agradezco especialmente:
   renueva, no crédito de bienvenida).
 
 Antes de mandar un PR, `npm test` en verde. Si tocas enrutado o cuotas, con un test que
-falle sin tu cambio. Más detalles en [CONTRIBUTING.md](CONTRIBUTING.md); los problemas de
+falle sin tu cambio. Más detalles en [CONTRIBUTING.md](CONTRIBUTING.md). Los problemas de
 seguridad se reportan como indica [SECURITY.md](SECURITY.md).
 
 ## Licencia

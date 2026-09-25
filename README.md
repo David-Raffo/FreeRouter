@@ -3,7 +3,7 @@
 **English** · [Español](README.es.md)
 
 **A single OpenAI-compatible endpoint in front of 24 free inference providers.** You bring
-the keys; it decides which model serves each request, respects every provider's quota so
+the keys. It decides which model serves each request, respects every provider's quota so
 it never triggers a 429, and fails over when one of them breaks.
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -31,7 +31,7 @@ provider is answering, and it does not have to handle retries.
 
 ![Model status](docs/capturas/estado.png)
 
-Every model with its TTFT, its tok/s rate and its quality score — measured, not declared.
+Every model with its TTFT, its tok/s rate and its quality score: measured, not declared.
 Models that cannot serve sink to the bottom, and a grey score (`~11`) flags that the
 quality is a per-family estimate rather than an Intelligence Index value.
 
@@ -39,7 +39,7 @@ quality is a per-family estimate rather than an Intelligence Index value.
 
 Which API key called, which model ended up serving it and how many attempts it took.
 Clicking a row opens the timeline: who was tried, with which error and how long each
-attempt took. This screenshot shows the router at work — the two requests with `Int. 2`
+attempt took. This screenshot shows the router at work: the two requests with `Int. 2`
 are failovers the client never noticed.
 
 ![Providers](docs/capturas/proveedores.png)
@@ -66,7 +66,7 @@ applications never have to care.
 
 - [Installation](#installation) · [Docker](#docker) · [Password](#password)
 - [Usage](#usage) · [Endpoints](#endpoints)
-- [How it decides](#how-it-decides) — quality, speed and why they are measured this way
+- [How it decides](#how-it-decides): quality, speed and why they are measured this way
 - [Quotas](#quotas) · [Providers](#providers) · [What is actually free](#what-is-actually-free)
 - [Configuration](#configuration) · [Security](#security) · [Exposing it to the internet](#exposing-it-to-the-internet)
 - [Model list](#model-list) · [Request history](#request-history) · [Calibration](#calibration)
@@ -87,7 +87,7 @@ npm run build          # builds the dashboard and the server
 npm start              # http://localhost:8787/app/
 ```
 
-For development, `npm run dev` starts the server with hot reload; the dashboard has its
+For development, `npm run dev` starts the server with hot reload. The dashboard has its
 own `npm run dev --workspace=web` on port 5173, proxying to 8787.
 
 ## Docker
@@ -119,7 +119,7 @@ and if the variable exists but is too short, the server stops before opening the
 There is no path that ends in an unprotected, reachable dashboard.
 
 That is why the password is an environment variable rather than a setup wizard: on its own
-a variable would be dangerous — forgetting it would leave the dashboard open — but if
+a variable would be dangerous, forgetting it would leave the dashboard open, but if
 forgetting it prevents startup, the mistake becomes impossible. It is the same deal
 Postgres makes with `POSTGRES_PASSWORD`.
 
@@ -160,7 +160,7 @@ response = client.chat.completions.create(
 
 The response carries three headers: `x-freerouter-model` with the model that ended up
 serving the request, `x-freerouter-attempts` with how many attempts it took, and
-`x-freerouter-router-ms` with how long FreeRouter took to decide — around 4 ms, so you can
+`x-freerouter-router-ms` with how long FreeRouter took to decide: around 4 ms, so you can
 check for yourself that the time is spent by the provider and not by the router.
 
 ### Reasoning
@@ -169,8 +169,8 @@ Reasoning models leak their "thinking" in two ways: between `<think>…</think>`
 the text itself, or in a separate field (`reasoning_content` in DeepSeek, `reasoning` in
 OpenRouter). In a chatbot, that ends up in front of the end user.
 
-By default **it is not forwarded**. The model still reasons — that is untouched, it is what
-makes it answer better; the only thing that changes is what travels in the response. Each
+By default **it is not forwarded**. The model still reasons: that is untouched, it is what
+makes it answer better. The only thing that changes is what travels in the response. Each
 API key has a "Also send reasoning" checkbox in case you want to show it on purpose.
 
 Filtering it while streaming is trickier than it looks: the tag arrives split across chunks
@@ -193,12 +193,12 @@ configuration. Whichever you use, routing is the same.
 What a free-model router cannot provide is left out of `/v1/responses`: built-in tools
 (web search, code interpreter) are executed by OpenAI on its own infrastructure and are
 discarded here, and `previous_response_id` is rejected with a clear error because
-FreeRouter does not store conversations — send the full history in `input`, as with the
+FreeRouter does not store conversations: send the full history in `input`, as with the
 classic API.
 
 `GET /v1/models` returning only `auto` is intentional: the client does not choose a model,
 that is the whole point of the project. If your tool forces you to pick one from a list,
-pick `auto`; if it lets you type it, anything works.
+pick `auto`. If it lets you type it, anything works.
 
 ## How it decides
 
@@ -212,7 +212,7 @@ score = (quality_weight · quality + speed_weight · speed) · quality_penalty
 ```
 
 Both components are measured on an **absolute scale**, not relative to the other
-candidates. Normalising against the group — 1 for the best, 0 for the worst — had two
+candidates. Normalising against the group (1 for the best, 0 for the worst) had two
 flaws: in a group of slow models one of them still scored 1 on speed, and the fastest got
 the maximum even when its advantage was imperceptible.
 
@@ -224,11 +224,11 @@ the maximum even when its advantage was imperceptible.
 
 - **Speed**: combines two measurements, with throughput weighing almost twice as much as
   start-up, and **saturates at 200 tok/s**. At that rate a hundred-token answer is out in
-  half a second; a model running at 667 does not make it noticeably better. Without that
+  half a second. A model running at 667 does not make it noticeably better. Without that
   ceiling, raw speed bought first place: a quality-11 model running at 667 tok/s ranked
   ahead of far more capable ones. TTFT has its own absolute bounds, 300 ms (anything below
   feels the same) and 10 s.
-- **Quality floor**: below an Intelligence Index of **15** the score drops quadratically —
+- **Quality floor**: below an Intelligence Index of **15** the score drops quadratically:
   an 11 keeps half, a 1 keeps a thousandth. It is not a filter: the model stays in the
   chain as a last resort, because a weak model is better than none, but it stops competing
   for first place. It is needed because the median quality of the free tier is 11: without
@@ -260,7 +260,7 @@ the maximum even when its advantage was imperceptible.
   also what determines how long you actually wait.
 
   `POST /api/models/<id>/measure` with `{"providerId":"…"}` returns the full detail of a
-  measurement — events, gaps between them, burst ratio — so any figure that looks off can
+  measurement (events, gaps between them, burst ratio), so any figure that looks off can
   be audited. When the provider reports its own generation time (Groq sends
   `usage.completion_time`) it is returned too, as the only external reference to check
   against:
@@ -281,7 +281,7 @@ the maximum even when its advantage was imperceptible.
 
   Endpoint details that took effort to find: the index is nested in
   `evaluations.artificial_analysis_intelligence_index`, not at the model root, and the
-  response is paginated — stopping at the first page leaves out two thirds of the data.
+  response is paginated: stopping at the first page leaves out two thirds of the data.
   Syncing **merges**: it never deletes a value already present in `quality.json`.
 
 Required capabilities do not come only from the API key: if the request includes an image
@@ -308,13 +308,13 @@ A fixed penalty does not work, because a 429 hides two different situations and 
 say which one it is:
 
 - A momentary spike. OpenRouter's `:free` models run on shared providers and at peak hours
-  return 429 with "Provider returned error" — not OpenRouter's quota, but the upstream
+  return 429 with "Provider returned error": not OpenRouter's quota, but the upstream
   provider being saturated. They are back within a minute.
 - A genuinely exhausted bucket, which will stay exhausted for a good while.
 
 With a short penalty, the second case is retried endlessly. And retrying is not free:
 measured on real traffic, a Groq failure costs 76 ms median but an OpenRouter one costs
-532 ms, seven times more — and on OpenRouter it also burns one of the 50 daily requests,
+532 ms, seven times more, and on OpenRouter it also burns one of the 50 daily requests,
 because there **failed requests count too**. With a long penalty, on the other hand, a
 one-minute spike leaves you without your best model for hours. Doubling starts cheap and
 only gets expensive for whoever proves it should be.
@@ -344,15 +344,14 @@ lowered there and routing does not notice.
 | 8th | 2.1 h | 6 h (cap) |
 
 Two limits on the penalty: if the provider sends `retry-after`, it knows better than we
-do and its figure wins — the multiplier is not applied; and a model is never benched past
+do and its figure wins: the multiplier is not applied, and a model is never benched past
 the daily reset, because after that the quota comes back by itself.
 
 ### Providers
 
 The catalogue lives in `server/catalog/providers.json`. Since all of them expose an
 OpenAI-compatible API, a provider is **data, not code**: base URL, key format and limits.
-Adding one is an entry in that JSON. The only two with custom logic — Groq, which reports
-its quota in headers, and OpenRouter, which has an account endpoint — provide it in
+Adding one is an entry in that JSON. The only two with custom logic (Groq, which reports its quota in headers, and OpenRouter, which has an account endpoint) provide it in
 `src/providers/overrides.ts`.
 
 | Provider | Free quota | Notes |
@@ -372,11 +371,11 @@ its quota in headers, and OpenRouter, which has an account endpoint — provide 
 | **Requesty** | ~200 req/day | Only its zero-priced models are routed |
 | **OpenRouter** | 50 req/day (1,000 after spending $10) | Failures also consume quota |
 | **ModelScope** | 2,000 req/day per account, resets every 24 h | More daily quota than Groq. Chinese platform: higher latency from Europe |
-| **OrcaRouter** | Rate-limited, not quota-limited; no card | 3 free models + an alias that load-balances across them |
-| **TokenRouter** | 2 zero-priced models | No published limits; they warn themselves that stability is not guaranteed |
-| **Pollinations** | 12 req/min with free sign-up | 280 text models out of 394; the rest are image and audio |
+| **OrcaRouter** | Rate-limited, not quota-limited. No card | 3 free models + an alias that load-balances across them |
+| **TokenRouter** | 2 zero-priced models | No published limits. They warn themselves that stability is not guaranteed |
+| **Pollinations** | 12 req/min with free sign-up | 280 text models out of 394. The rest are image and audio |
 | **Cohere** | 1,000 calls/month · 20 req/min | Trial keys: evaluation, not production |
-| **Hugging Face** | $0.10/month renewing credit | Not much; sits near the end of the chain |
+| **Hugging Face** | $0.10/month renewing credit | Not much. Sits near the end of the chain |
 | **Cerebras** | ⚠️ No longer free | $5 trial that expires |
 | **Scaleway** | ⚠️ 1M welcome tokens | Credit that runs out |
 | **Alibaba DashScope** | ⚠️ 1M tokens/model, 90 days | Expiring credit |
@@ -411,8 +410,8 @@ headers and 429s.
 
 **Two-part credentials.** Cloudflare puts the account id inside the URL
 (`/accounts/{id}/ai/v1`), so its credential is pasted as `accountId:token` and split on
-the first `:` — the token may contain more. The descriptor declares it with
-`credentialFormat: "account:token"` and `baseUrlTemplate`; the rest of the router does not
+the first `:`, since the token may contain more. The descriptor declares it with
+`credentialFormat: "account:token"` and `baseUrlTemplate`. The rest of the router does not
 notice. Cloudflare also does not expose `/models` on its OpenAI-compatible path (it
 returns 405): its models are listed separately, at `/ai/models/search`, filtering by the
 "Text Generation" task.
@@ -422,10 +421,10 @@ routing a chat to an embeddings model or an image generator always fails:
 
 - `freeOnly` for aggregators that mix free and paid models (OpenRouter, Requesty,
   SiliconFlow): only confirmed zero-priced models pass. A model with unknown pricing is
-  discarded — better to lose a model than to be billed by accident.
+  discarded: better to lose a model than to be billed by accident.
 - `freeIdPattern` when the aggregator mixes free and paid models but **does not publish
   readable prices**. OrcaRouter returns 194 models with no price field, Claude Opus and
-  GPT among them; TokenRouter does not even allow listing without a key. In both, the only
+  GPT among them. TokenRouter does not even allow listing without a key. In both, the only
   thing that distinguishes free models is the id suffix (`-free`, `:free`), so only those
   pass. With no price to check, the id is the only defence against accidental billing: on
   OrcaRouter it leaves 4 of the 194 models.
@@ -435,8 +434,8 @@ routing a chat to an embeddings model or an image generator always fails:
 - **models.dev** when the provider's listing is not enough. OpenCode Zen serves 70 models
   and its `/models` returns only the id: without pricing there is no way to know which are
   free, and paid Claude, GPT and Gemini are in there. models.dev is the open catalogue
-  OpenCode itself uses and publishes price, context, modalities and tool use per model;
-  crossing it with what the provider actually serves leaves the 8 free ones.
+  OpenCode itself uses and publishes price, context, modalities and tool use per model.
+  Crossing it with what the provider actually serves leaves the 8 free ones.
 
   It is enabled with `modelsDevKey` in the descriptor, and **only where its prices reflect
   the free tier**. For providers that charge by usage (Cloudflare and its neurons)
@@ -465,20 +464,20 @@ consume it too.
 
 | Variable                       | Default               | Purpose                                               |
 | ------------------------------ | --------------------- | ----------------------------------------------------- |
-| `FREEROUTER_PASSWORD`          | —                     | **Required.** Dashboard password; it will not start without it |
+| `FREEROUTER_PASSWORD`          | -                     | **Required.** Dashboard password. It will not start without it |
 | `FREEROUTER_DISABLE_AUTH`      | `false`               | Removes the password. Local use only                  |
 | `FREEROUTER_HTTPS`             | `false`               | Marks the session cookie as `secure`                  |
 | `FREEROUTER_PORT`              | `8787`                | Dashboard and API port                                |
 | `FREEROUTER_HOST`              | `127.0.0.1`           | Listening interface                                   |
 | `FREEROUTER_HOME`              | `~/.freerouter`       | Database and master key                               |
-| `FREEROUTER_PASSPHRASE`        | —                     | Derives the master key from a passphrase (scrypt)     |
-| `ARTIFICIAL_ANALYSIS_API_KEY`  | —                     | Enables the real Intelligence Index                   |
+| `FREEROUTER_PASSPHRASE`        | -                     | Derives the master key from a passphrase (scrypt)     |
+| `ARTIFICIAL_ANALYSIS_API_KEY`  | -                     | Enables the real Intelligence Index                   |
 | `FREEROUTER_DB`                | `<HOME>/freerouter.db`| SQLite file path                                      |
 | `LOG_LEVEL`                    | `info`                | Log verbosity (`debug`, `warn`, `error`…)             |
 | `FREEROUTER_BIND`              | `0.0.0.0`             | Interface 8787 is published on (Docker only)          |
-| `FREEROUTER_DOMAIN`            | —                     | Domain for the `https` profile (Caddy)                |
-| `ACME_EMAIL`                   | —                     | Let's Encrypt notification email, `https` profile     |
-| `CLOUDFLARE_TUNNEL_TOKEN`      | —                     | Tunnel token, `tunnel` profile                        |
+| `FREEROUTER_DOMAIN`            | -                     | Domain for the `https` profile (Caddy)                |
+| `ACME_EMAIL`                   | -                     | Let's Encrypt notification email, `https` profile     |
+| `CLOUDFLARE_TUNNEL_TOKEN`      | -                     | Tunnel token, `tunnel` profile                        |
 
 The files in `server/catalog/` (`limits.json`, `capabilities.json`, `quality.json`) can be
 edited by hand and are reloaded without recompiling.
@@ -494,7 +493,7 @@ which someone could claim the instance, a risk n8n documents in its own setup wi
 The session lives in an HMAC-signed, `httpOnly`, `SameSite=Lax` cookie, with no session
 table. Eight failed attempts lock access for five minutes.
 
-**2. Encryption at rest.** Provider keys are encrypted with AES-256-GCM; the master key
+**2. Encryption at rest.** Provider keys are encrypted with AES-256-GCM. The master key
 lives in `~/.freerouter/master.key` with restricted permissions (and its own ACL on
 Windows). The dashboard only ever sees the last 4 characters of each key.
 
@@ -507,7 +506,7 @@ your API keys travel in clear text.
 There are two ways, depending on whether your server has a public IP. Both are Docker
 Compose profiles in this same repository: no extra files and no manual steps.
 
-**Method 1 — open the port (`--profile https`).** The usual choice for a VPS: you have a
+**Method 1: open the port (`--profile https`).** The usual choice for a VPS: you have a
 public IP and can point a domain at it. Caddy sits in front and obtains the Let's Encrypt
 certificate by itself, with no account anywhere.
 
@@ -515,7 +514,7 @@ certificate by itself, with no account anywhere.
 # .env
 FREEROUTER_PASSWORD=whatever-you-like
 FREEROUTER_DOMAIN=freerouter.yourdomain.com
-ACME_EMAIL=you@example.com        # expiry notices; optional but recommended
+ACME_EMAIL=you@example.com        # expiry notices, optional but recommended
 FREEROUTER_HTTPS=true
 FREEROUTER_BIND=127.0.0.1         # 8787 is no longer reachable from outside
 ```
@@ -527,11 +526,11 @@ docker compose --profile https up -d
 ```
 
 `FREEROUTER_BIND=127.0.0.1` is what prevents bypassing HTTPS by going straight to `:8787`.
-The certificate renews itself; there is no cron job to set up.
+The certificate renews itself. There is no cron job to set up.
 
-**Method 2 — Cloudflare tunnel (`--profile tunnel`).** For when you *cannot* open ports: a
+**Method 2: Cloudflare tunnel (`--profile tunnel`).** For when you *cannot* open ports: a
 home server, behind CGNAT, or a router you do not control. The connection goes from the
-inside out, so there is nothing to open — in exchange you need a (free) Cloudflare account
+inside out, so there is nothing to open: in exchange you need a (free) Cloudflare account
 and traffic goes through them.
 
 In [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels, create
@@ -561,7 +560,7 @@ docker run --rm --network host cloudflare/cloudflared:latest tunnel --url http:/
 ```
 
 It gives you a `https://something-random.trycloudflare.com` URL that dies when you stop the
-process. Good for testing from your phone or elsewhere; not for leaving it running.
+process. Good for testing from your phone or elsewhere. Not for leaving it running.
 
 `FREEROUTER_DISABLE_AUTH=true` removes the password. It only makes sense if the dashboard
 is bound to `127.0.0.1` and nobody else can reach that machine.
@@ -575,10 +574,9 @@ Learned from real traffic, not in theory:
   the others. It is not retried, because retrying does not fix it.
 - **401 on a specific model**: some OpenRouter models are reserved for certain customers
   and answer 401 even though the key is valid. Before declaring the key dead it is
-  revalidated; if it is fine, **only that model** is disabled. Without this check one odd
+  revalidated. If it is fine, **only that model** is disabled. Without this check one odd
   model would take down the provider's other 17.
-- **A model that does not generate a single token** — the first-token deadline expires, or
-  it returns 200 and writes nothing — is removed from routing **on the first failure** and
+- **A model that does not generate a single token** (the first-token deadline expires, or it returns 200 and writes nothing) is removed from routing **on the first failure** and
   retired on the third. It is not a blip: the provider advertises it and it does not work,
   and NVIDIA alone publishes dozens like that. With normal treatment it took eight
   failures and, between quarantines, that meant hours during which the model still showed
@@ -587,8 +585,8 @@ Learned from real traffic, not in theory:
   it. There an isolated failure really is usually transient, and retiring on it would lose
   models that work.
 - **Continuing the chain**: *any* error moves on to the next candidate, a 400 included. In
-  theory a 400 is the request's fault and would fail the same everywhere; in practice it
-  is not — OpenCode returns 400 with "Upstream request failed: Model is unavailable", which
+  theory a 400 is the request's fault and would fail the same everywhere. In practice it
+  is not: OpenCode returns 400 with "Upstream request failed: Model is unavailable", which
   is its own problem in disguise. If every candidate agrees on rejecting it, then a 400
   with the reason is returned instead of a generic 502.
 - **A provider that does not support streaming** does not get a failure for it. Measuring
@@ -672,12 +670,12 @@ is kept even when prompt logging is turned off.
 ### Always measuring TTFT
 
 An answer that arrives in one piece has no "first token", so there is no TTFT to time.
-That leaves out every client that does not use streaming — n8n, for one — and the router
+That leaves out every client that does not use streaming (n8n, for one) and the router
 loses one of its two speed metrics no matter how much it is used.
 
 That is why, by default, **FreeRouter asks the provider for a chunked response even if
 your client did not**, times the first token and reassembles it before answering. What you
-receive is a `chat.completion` identical to the one you would have received anyway; the
+receive is a `chat.completion` identical to the one you would have received anyway. The
 only difference is that there is now a TTFT.
 
 It can be turned off with the "Always measure TTFT" checkbox in the Requests tab.
@@ -690,15 +688,14 @@ for a clean comparison:
 | With internal streaming | 2.73 | 0.09 |
 | In one piece | 2.73 | 0.19 |
 
-It is the same work for the model; only the transport packaging changes.
+It is the same work for the model. Only the transport packaging changes.
 
 **And it can never cause an error**, because measuring TTFT is an extra and must not cost
 a single request. The cases:
 
 - The provider **ignores** the chunking request and answers in one piece. It is read as
-  is; only the TTFT is lost, which did not exist there anyway.
-- The provider **rejects** it with a 400. The same model is retried without chunking — it
-  does not move to another one — and it is recorded so it is never asked again. That
+  is. Only the TTFT is lost, which did not exist there anyway.
+- The provider **rejects** it with a 400. The same model is retried without chunking (it does not move to another one) and it is recorded so it is never asked again. That
   rejection does not count as a failure and does not affect the model's health. Only a 400
   triggers this: a 5xx says nothing about streaming, and retrying it would double the
   calls to a provider that is already failing.
@@ -708,8 +705,7 @@ a single request. The cases:
 
 The prompt is stored **split by message**, not as a single block of text, and the
 dashboard only expands **the last exchange**: the assistant's last answer and what the
-user replied to it, with the question highlighted. Everything else starts collapsed — the
-system prompt on one side, the earlier conversation in a single block — and is one click
+user replied to it, with the question highlighted. Everything else starts collapsed (the system prompt on one side, the earlier conversation in a single block) and is one click
 away. A chatbot request carries the whole conversation, and with twenty turns in front you
 had to scroll half a screen to find what you actually wanted to see. If the last exchange
 contains tool results, they stay visible: they are part of it.
@@ -720,7 +716,7 @@ prompt longer than that **the user's message was never stored**. Now the last th
 is kept whole and whatever is left over is taken from the system prompt, marked as
 truncated. Requests from before this change are still shown as they were.
 
-Storing prompts and responses is enabled by default — it is what makes the history useful —
+Storing prompts and responses is enabled by default (it is what makes the history useful),
 but it is sensitive data kept in the local database. It can be turned off with the "Store
 prompts and responses" checkbox, and "Purge content" deletes texts already stored while
 keeping the metrics. Each text is capped at 4,000 characters and only the last 500
@@ -737,7 +733,7 @@ It triggers by itself at two moments: at startup and **when a provider is connec
 second matters more than it seems: periodic probing measures one model every two minutes,
 so connecting a provider with dozens of models would take over an hour to have data, and
 the router would decide almost blindly in the meantime. The dashboard only reports
-progress; there is no button because there is no need to press it.
+progress. There is no button because there is no need to press it.
 
 Calibration respects quota like any other request: if a provider's per-minute bucket fills
 up, it **waits** for a slot instead of skipping the model. To re-measure everything from
@@ -746,7 +742,7 @@ scratch: `POST /api/warmup?force=true`.
 **How often a model is re-measured.** It is not a fixed number, and it cannot be: a probe
 spends a real request from the provider's quota. Measuring every model every hour costs
 Cohere 72 % of its 33 daily requests and OpenRouter 48 % of its 50, while it costs NVIDIA
-or Cloudflare — with no daily cap — nothing. A single threshold either ruins the poor or
+or Cloudflare, with no daily cap, nothing. A single threshold either ruins the poor or
 wastes the rich.
 
 So the rate comes from the quota: **5 %** of the provider's daily requests is reserved for
@@ -754,7 +750,7 @@ probes and split among its models.
 
 | Provider | Models | Quota/day | Re-measured every | Cost |
 | --- | --- | --- | --- | --- |
-| NVIDIA | 68 | no cap | 3 h | — |
+| NVIDIA | 68 | no cap | 3 h | - |
 | Groq | 7 | 1,000 | 3.4 h | 5 % |
 | ModelScope | 47 | 2,000 | 11.3 h | 5 % |
 | Google | 10 | 250 | 19.2 h | 5 % |
@@ -768,7 +764,7 @@ metrics at no extra cost.
 
 The three-hour base is not one hour either: a model's speed does not change from hour to
 hour, the ones actually in use already refresh themselves, and there are providers with no
-request cap that do have a cap on something else — Cloudflare counts neurons — for which
+request cap that do have a cap on something else (Cloudflare counts neurons), for which
 68 probes an hour would hurt.
 
 **The loop sweeps, it does not drip.** Previously one model was measured every two minutes:
@@ -783,25 +779,23 @@ average.
 **Parallelism.** Each provider is a different API with its own quota, so they are measured
 in parallel. There is a global cap of 6 simultaneous measurements, and it is not arbitrary:
 several streams competing for the same bandwidth and the same event loop make throughput
-look lower than it is. With six at a time the bias is negligible — each stream is a few
+look lower than it is. With six at a time the bias is negligible: each stream is a few
 KB/s.
 
 That global cap is the only one: a provider can use all six slots if the others have
-finished. Also limiting it to two per provider protected nothing — quotas are already
-reserved before each probe — and turned the provider with the most models into the
+finished. Also limiting it to two per provider protected nothing (quotas are already reserved before each probe) and turned the provider with the most models into the
 bottleneck for everything: on a fresh install, NVIDIA brings 68 models and took 393 s while
 the rest finished in 90 s with four slots left idle.
 
 **First-token deadline.** On top of the 2-minute total cap there is a 25 s deadline for the
-model to *start*. A model that emits nothing in that time will never be chosen — the speed
-score is already zero past 10 s of TTFT — so waiting two minutes for it only recorded what
+model to *start*. A model that emits nothing in that time will never be chosen (the speed score is already zero past 10 s of TTFT), so waiting two minutes for it only recorded what
 was already known: four dead NVIDIA models were eating 480 s of the provider's 786 s. As
 soon as the first token arrives the deadline is cancelled and the total cap applies, so a
 slow but healthy model is not cut off while writing.
 
 **Order.** Within each provider, the highest-quality models are measured first.
 Calibrating a large catalogue takes minutes and during that time the router decides with
-partial data; having the candidates it will actually pick measured within the first
+partial data. Having the candidates it will actually pick measured within the first
 seconds matters more than the order of the rest of the queue.
 
 Together, these three changes bring a fresh install of 136 models down to about 2 minutes,
@@ -809,7 +803,7 @@ from almost 7 before.
 
 A detail that took effort to find: some providers send the whole answer in a single SSE
 event. Measuring up to the last event with content, the generation interval would be zero
-and there would be no tok/s; that is why the interval is measured to the end of the stream
+and there would be no tok/s. That is why the interval is measured to the end of the stream
 and tokens are estimated by length when the provider sends no `usage`.
 
 ## Tests
@@ -819,10 +813,9 @@ npm test
 ```
 
 164 tests: per-profile scoring (including speed saturation and the quality floor),
-quotas — including the difference between per-model and per-account buckets, and the
-growing penalty after a 429 —, capability filtering, the health circuit breaker, dashboard
+quotas (including the difference between per-model and per-account buckets, and the growing penalty after a 429), capability filtering, the health circuit breaker, dashboard
 authentication, Responses API translation in both directions, reassembly of a chunked
-response, and end-to-end gateway tests with a mocked `fetch` — among them 10 concurrent
+response, and end-to-end gateway tests with a mocked `fetch`: among them 10 concurrent
 requests spread across three providers without a single 429 or retry.
 
 `test/http.test.ts` starts a **real** HTTP server instead of using `app.inject()`. It
@@ -841,7 +834,7 @@ a double more permissive than reality proves nothing.
 │   │   ├── limits.json      #   Quota seed
 │   │   └── quality.json     #   Cached Intelligence Index
 │   └── src/
-│       ├── providers/       # generic.ts builds a provider from its descriptor;
+│       ├── providers/       # generic.ts builds a provider from its descriptor,
 │       │                    # overrides.ts only for Groq, Cloudflare and OpenRouter
 │       ├── routing/         # quota · health · score · select · execute · probe
 │       ├── catalog/         # Artificial Analysis sync
@@ -858,7 +851,7 @@ a double more permissive than reality proves nothing.
 
 **Adding a provider** is usually one entry in `providers.json`, with no code changes: all
 of them expose an OpenAI-compatible API, so a provider is *data*. Lines in `overrides.ts`
-are only needed when a provider breaks the mould — Groq publishes its quota in headers,
+are only needed when a provider breaks the mould: Groq publishes its quota in headers,
 Cloudflare lists models on another path, OpenRouter has an account endpoint.
 
 ## Contributing
